@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      KEYSTORE_PATH: /tmp/release.keystore
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,13 +32,13 @@ jobs:
           java-version: 17
 
       - name: Save keystore to file
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ env.KEYSTORE_PATH }}
 
       - name: Prebuild
         run: npx expo prebuild --platform android --clean
 
       - name: Place keystore
-        run: cp /tmp/release.keystore android/app/release.keystore
+        run: cp ${{ env.KEYSTORE_PATH }} android/app/release.keystore
 
       - name: Extract version from tag
         id: version
@@ -47,7 +49,7 @@ jobs:
           cd android
           sed -i 's/reactNativeArchitectures=.*/reactNativeArchitectures=arm64-v8a/' gradle.properties
           ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=../app/release.keystore \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/android/app/release.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
@@ -63,7 +65,7 @@ jobs:
           cd android
           sed -i 's/reactNativeArchitectures=.*/reactNativeArchitectures=armeabi-v7a/' gradle.properties
           ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=../app/release.keystore \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/android/app/release.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
@@ -85,4 +87,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -f /tmp/release.keystore android/app/release.keystore
+        run: rm -f ${{ env.KEYSTORE_PATH }} android/app/release.keystore
