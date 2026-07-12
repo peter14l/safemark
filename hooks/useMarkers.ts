@@ -7,7 +7,11 @@ export function useMarkers(userId: string | undefined) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setMarkers([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const data = await getMarkers(userId);

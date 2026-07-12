@@ -22,7 +22,10 @@ export default function PairingScreen() {
   const [redeeming, setRedeeming] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     getPartner(user.id).then((p) => {
       setPartner(p);
       setLoading(false);

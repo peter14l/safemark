@@ -8,14 +8,30 @@ Built with **Expo SDK 57**, **React Native 0.86**, **Supabase + PostGIS**, and *
 
 ### Calculator Decoy
 - Functional calculator as the default screen
-- 3-finger swipe down reveals the hidden PIN entry screen
+- 3-finger touch reveals the hidden PIN entry screen
 - 6-digit PIN unlocks the real app
 - App icon and name show as "Calc" on the home screen
+
+### SOS
+- Emergency SOS with one-tap activation
+- Sends SMS to all emergency contacts
+- Records audio clip during SOS event
+- Logs SOS to Supabase with GPS coordinates
+- Notifies partner immediately in-app
+- Quick-access card on the dashboard
+
+### Emergency Contacts
+- Add, edit, and remove emergency contacts
+- Stored locally in SecureStore
+- Contact picker from device address book
+- Maximum 10 contacts
 
 ### Location Tracking
 - Continuous background location tracking via foreground service
 - GPS coordinates with accuracy reporting
 - Automatic geofence detection when entering/exiting marker zones
+- Survives app kill and device reboot via BootReceiver
+- Battery optimization exemption prompt in Settings
 
 ### Geofence Markers
 - Add named checkpoints with custom radius (50m / 100m / 250m / 500m)
@@ -35,6 +51,8 @@ Built with **Expo SDK 57**, **React Native 0.86**, **Supabase + PostGIS**, and *
 
 ### Settings
 - Toggle push notifications on/off
+- Battery optimization settings for reliable background tracking
+- Emergency contacts management
 - Reset PIN
 - Sign out
 
@@ -44,11 +62,13 @@ Built with **Expo SDK 57**, **React Native 0.86**, **Supabase + PostGIS**, and *
 safemark/
 ├── app/                    # Expo Router screens
 │   ├── (app)/              # Authenticated screens (bottom nav)
-│   │   ├── dashboard.tsx   # Overview: tracking status, markers, partner
+│   │   ├── dashboard.tsx   # Overview: tracking status, markers, partner, SOS
 │   │   ├── markers.tsx     # Add/manage geofence checkpoints
 │   │   ├── feed.tsx        # Partner location updates
 │   │   ├── pairing.tsx     # Generate/redeem invite codes
-│   │   └── settings.tsx    # Account, notifications, security
+│   │   ├── settings.tsx    # Account, notifications, battery, security
+│   │   ├── sos.tsx         # Emergency SOS activation
+│   │   └── emergency-contacts.tsx  # Manage emergency contacts
 │   ├── (auth)/
 │   │   └── login.tsx       # Email/password login
 │   ├── calculator.tsx      # Decoy calculator screen
@@ -68,15 +88,20 @@ safemark/
 │   ├── auth.ts             # Sign up, sign in, sign out
 │   ├── markers.ts          # Marker CRUD via Supabase
 │   ├── pairing.ts          # Invite code generation + redemption
-│   ├── location.ts         # Background task + geofence detection
-│   └── notifications.ts    # Push notification registration
+│   ├── location.ts         # Foreground service + geofence detection
+│   ├── notifications.ts    # Push notification registration
+│   ├── audioRecorder.ts    # SOS audio recording (expo-audio)
+│   └── sos.ts              # SOS activation orchestrator
 ├── lib/                    # Utilities
+│   ├── battery.ts          # Battery optimization settings
 │   ├── constants.ts        # App-wide constants
+│   ├── contacts.ts         # Emergency contacts CRUD
 │   ├── geofence.ts         # Haversine distance calculation
 │   ├── icons.tsx           # SVG icon components
-│   └── securestore.ts      # Encrypted PIN storage
-├── supabase-schema.sql     # Full database schema (PostGIS, RLS, RPCs)
-└── supabase/               # Supabase config
+│   └── securestore.ts      # Encrypted PIN + tracking preference
+├── supabase-schema.sql     # Core database schema (PostGIS, RLS, RPCs)
+├── supabase-schema-sos.sql # SOS events table + notify_partner_sos RPC
+└── supabase/               # Supabase Edge Functions
 ```
 
 ## Tech Stack
@@ -90,9 +115,12 @@ safemark/
 | Database | Supabase (PostgreSQL + PostGIS) |
 | Auth | Supabase Auth (email/password) |
 | Location | expo-location + expo-task-manager (foreground service) |
+| Audio | expo-audio (SOS recording) |
+| SMS | expo-sms (emergency contacts) |
 | Notifications | expo-notifications (Expo Push) |
-| Secure Storage | expo-secure-store (PIN) |
+| Secure Storage | expo-secure-store (PIN, contacts, tracking state) |
 | Animations | react-native-reanimated |
+| Maps | react-native-maps (markers view) |
 
 ## Database Schema
 
@@ -104,12 +132,14 @@ PostGIS-powered tables with Row Level Security:
 - **markers** — Geofence checkpoints with geography POINT column + GIST index
 - **geofence_events** — Entered/exited events per marker
 - **location_feed** — Shared location updates between partners
+- **sos_events** — SOS activations with coordinates, audio path, SMS status
 
 RPC functions:
 - `get_marker_location(marker_id)` — Extract lat/lng from geography
 - `find_nearby_markers(user, lat, lng, max_dist)` — Find markers within distance
+- `notify_partner_sos(sos_lat, sos_lng)` — Alert partner of SOS event
 
-See [`supabase-schema.sql`](supabase-schema.sql) for the full schema.
+See [`supabase-schema.sql`](supabase-schema.sql) and [`supabase-schema-sos.sql`](supabase-schema-sos.sql) for the full schema.
 
 ## Getting Started
 
@@ -132,7 +162,8 @@ npm install --legacy-peer-deps
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Run `supabase-schema.sql` in the SQL Editor
-3. Copy your project URL and anon key
+3. Run `supabase-schema-sos.sql` for SOS features
+4. Copy your project URL and anon key
 
 ### 3. Configure Environment
 
@@ -161,19 +192,20 @@ npx expo run:android
 
 ```bash
 npx expo prebuild --platform android --clean
-cd android && ./gradlew assembleDebug
+cd android && ./gradlew assembleRelease
 ```
 
-APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
+APK output: `android/app/build/outputs/apk/release/app-release.apk`
 
 ## How It Works
 
 1. **Launch** — Calculator opens by default
-2. **Unlock** — 3-finger swipe down → enter 6-digit PIN → app unlocks
+2. **Unlock** — 3-finger touch → enter 6-digit PIN → app unlocks
 3. **Track** — Location tracking runs as a foreground service, even when backgrounded
 4. **Detect** — When GPS enters/exits a marker's radius, a geofence event fires
 5. **Notify** — Partner receives a push notification (if enabled) and sees the update in the Feed
 6. **Pair** — Generate a code on Device A, enter it on Device B to link them
+7. **SOS** — Tap SOS button → SMS to all contacts + audio recording + partner alert
 
 ## Permissions
 
@@ -183,6 +215,10 @@ The app requests:
 - **Foreground Service** — Persistent notification for background location
 - **Notifications** — Push alerts for geofence crossings
 - **Boot Completed** — Restart tracking after device reboot
+- **Record Audio** — SOS audio clip recording
+- **Send SMS** — Emergency text messages to contacts
+- **Read/Write Contacts** — Pick emergency contacts from address book
+- **Battery Optimization** — Prevent system from killing background tracking
 
 ## License
 

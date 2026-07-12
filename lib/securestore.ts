@@ -27,3 +27,14 @@ export async function verifyPin(pin: string): Promise<boolean> {
 export async function deletePin(): Promise<void> {
   await SecureStore.deleteItemAsync(PIN_KEY);
 }
+
+const TRACKING_KEY = "safemark_tracking_enabled";
+
+export async function getTrackingPreference(): Promise<boolean> {
+  const val = await SecureStore.getItemAsync(TRACKING_KEY);
+  return val === "true";
+}
+
+export async function setTrackingPreference(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(TRACKING_KEY, enabled ? "true" : "false");
+}

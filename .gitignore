@@ -53,3 +53,8 @@ Desktop.ini
 .claude/
 AGENTS.md
 CLAUDE.md
+
+# Signing
+*.keystore
+*.jks
+android/app/release.keystore

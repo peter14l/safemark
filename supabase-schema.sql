@@ -86,7 +86,7 @@ RETURNS TABLE(marker_id UUID, nickname TEXT, distance_meters DOUBLE PRECISION)
 LANGUAGE sql SECURITY DEFINER
 AS $$
   SELECT m.id, m.nickname,
-    ST_DDistance(m.location, ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography)
+    ST_Distance(m.location, ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography)
   FROM public.markers m
   WHERE m.user_id = p_user AND m.active = TRUE
     AND ST_DWithin(m.location, ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography, max_dist)

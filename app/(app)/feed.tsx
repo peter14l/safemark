@@ -15,7 +15,11 @@ export default function FeedScreen() {
   const [loading, setLoading] = useState(true);
 
   const fetchFeed = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
 
     const partner = await getPartner(user.id);
     if (partner && isConfigured && supabase) {

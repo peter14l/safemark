@@ -1,24 +1,41 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { useMarkers } from "../../hooks/useMarkers";
 import { useLocation } from "../../hooks/useLocation";
-import { isTracking } from "../../services/location";
+import { isTracking, startLocationTracking, stopLocationTracking } from "../../services/location";
 import { supabase, isConfigured } from "../../services/supabase";
 import { getPartner } from "../../services/pairing";
-import { Shield, Crosshair, CircleDot, MapPin } from "lucide-react-native";
+import {
+  Shield,
+  Crosshair,
+  CircleDot,
+  MapPin,
+  Play,
+  Square,
+  AlertTriangle,
+  Phone,
+} from "lucide-react-native";
+import { isSOSActive } from "../../services/sos";
+import { getEmergencyContacts, EmergencyContact } from "../../lib/contacts";
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const { user } = useAuth();
   const { markers } = useMarkers(user?.id);
   const { location } = useLocation();
   const [tracking, setTracking] = useState(false);
   const [partner, setPartner] = useState<{ id: string; name: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [sosActive, setSosActive] = useState(false);
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
 
   useEffect(() => {
     isTracking().then(setTracking);
+    setSosActive(isSOSActive());
+    getEmergencyContacts().then(setEmergencyContacts);
     if (user) {
       getPartner(user.id).then(setPartner);
     }
@@ -27,8 +44,20 @@ export default function DashboardScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     isTracking().then(setTracking);
+    setSosActive(isSOSActive());
+    getEmergencyContacts().then(setEmergencyContacts);
     if (user) getPartner(user.id).then(setPartner);
     setRefreshing(false);
+  };
+
+  const toggleTracking = async () => {
+    if (tracking) {
+      await stopLocationTracking();
+      setTracking(false);
+    } else {
+      const started = await startLocationTracking();
+      setTracking(started);
+    }
   };
 
   return (
@@ -86,6 +115,23 @@ export default function DashboardScreen() {
             </View>
           </View>
 
+          <TouchableOpacity
+            onPress={toggleTracking}
+            activeOpacity={0.7}
+            className={`flex-row items-center justify-center gap-2 py-3 rounded-xl mt-2 ${
+              tracking ? "bg-danger/15" : "bg-accent"
+            }`}
+          >
+            {tracking ? (
+              <Square size={16} color="#FF5252" fill="#FF5252" />
+            ) : (
+              <Play size={16} color="#FFFFFF" fill="#FFFFFF" />
+            )}
+            <Text className={`text-sm font-semibold ${tracking ? "text-danger" : "text-white"}`}>
+              {tracking ? "Stop Tracking" : "Start Tracking"}
+            </Text>
+          </TouchableOpacity>
+
           {location && (
             <View className="bg-bg rounded-xl p-3 mt-2 gap-1.5">
               <View className="flex-row items-center gap-2">
@@ -101,6 +147,42 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
+
+        {/* SOS Quick Access */}
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/sos")}
+          activeOpacity={0.7}
+          className={`rounded-2xl p-4 mb-4 ${
+            sosActive ? "bg-danger/15 border border-danger/30" : "bg-bg-card"
+          }`}
+        >
+          <View className="flex-row items-center gap-3">
+            <View
+              className={`w-11 h-11 rounded-xl items-center justify-center ${
+                sosActive ? "bg-danger/20" : "bg-danger/10"
+              }`}
+            >
+              <AlertTriangle
+                size={22}
+                color={sosActive ? "#FF1744" : "#FF5252"}
+                strokeWidth={1.8}
+              />
+            </View>
+            <View className="flex-1">
+              <Text className="text-white text-base font-semibold">
+                {sosActive ? "SOS ACTIVE" : "Emergency SOS"}
+              </Text>
+              <Text className="text-muted text-sm">
+                {sosActive
+                  ? "Recording and tracking in progress"
+                  : `${emergencyContacts.length} contact${emergencyContacts.length !== 1 ? "s" : ""} ready`}
+              </Text>
+            </View>
+            {sosActive && (
+              <View className="w-3 h-3 rounded-full bg-danger animate-pulse" />
+            )}
+          </View>
+        </TouchableOpacity>
 
         {/* Partner Status */}
         {partner && (

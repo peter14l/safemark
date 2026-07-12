@@ -12,7 +12,11 @@ import {
   BellOff,
   LogOut,
   Info,
+  AlertTriangle,
+  Users,
+  Battery,
 } from "lucide-react-native";
+import { showBatteryOptimizationPrompt } from "../../lib/battery";
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
@@ -125,11 +129,44 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      {/* Background Tracking */}
+      <View className="bg-bg-card rounded-2xl p-5 mb-4">
+        <Text className="text-muted text-xs uppercase tracking-wider mb-3">
+          Background Tracking
+        </Text>
+
+        <TouchableOpacity
+          onPress={showBatteryOptimizationPrompt}
+          activeOpacity={0.7}
+          className="flex-row items-center gap-3 bg-bg py-3 rounded-xl px-4"
+        >
+          <Battery size={18} color="#FFB300" strokeWidth={1.8} />
+          <View className="flex-1">
+            <Text className="text-white text-sm font-medium">
+              Battery Settings
+            </Text>
+            <Text className="text-muted text-xs">
+              Set to 'Unrestricted' for reliable tracking
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {/* Security */}
       <View className="bg-bg-card rounded-2xl p-5 mb-4">
         <Text className="text-muted text-xs uppercase tracking-wider mb-3">
           Security
         </Text>
+
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/emergency-contacts")}
+          activeOpacity={0.7}
+          className="flex-row items-center gap-3 bg-bg py-3 rounded-xl px-4 mb-3"
+        >
+          <Users size={18} color="#FF5252" strokeWidth={1.8} />
+          <Text className="text-white text-sm flex-1">Emergency Contacts</Text>
+          <Text className="text-muted text-xs">Manage</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleResetPin}

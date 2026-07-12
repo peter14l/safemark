@@ -1,0 +1,86 @@
+name: Build Signed Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+
+      - name: Prebuild
+        run: npx expo prebuild --platform android --clean
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build arm64-v8a
+        run: |
+          cd android
+          sed -i 's/reactNativeArchitectures=.*/reactNativeArchitectures=arm64-v8a/' gradle.properties
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=../app/release.keystore \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Rename arm64-v8a APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk safework-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
+
+      - name: Clean build
+        run: cd android && ./gradlew clean
+
+      - name: Build armeabi-v7a
+        run: |
+          cd android
+          sed -i 's/reactNativeArchitectures=.*/reactNativeArchitectures=armeabi-v7a/' gradle.properties
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=../app/release.keystore \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Rename armeabi-v7a APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk safework-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            safework-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
+            safework-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
+
+      - name: Cleanup keystore
+        if: always()
+        run: rm -f android/app/release.keystore

@@ -4,6 +4,7 @@ import { TASK_NAME, LOCATION_POLL_INTERVAL } from "../lib/constants";
 import { haversineDistance } from "../lib/geofence";
 import { sendLocalNotification } from "./notifications";
 import { supabase, isConfigured } from "./supabase";
+import { setTrackingPreference } from "../lib/securestore";
 
 const lastCrossingState = new Map<string, boolean>();
 let lastFeedUpdate = 0;
@@ -94,33 +95,16 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
           `You crossed ${marker.nickname}`
         );
 
-        // Push to partner (only if they have notifications enabled)
-        const { data: pairing } = await supabase
-          .from("pairings")
-          .select("partner_id")
-          .eq("user_id", user.id)
-          .single();
-
-        if (pairing) {
-          const { data: partnerProfile } = await supabase
-            .from("profiles")
-            .select("push_token, push_enabled")
-            .eq("id", pairing.partner_id)
-            .single();
-
-          if (partnerProfile?.push_token && partnerProfile?.push_enabled) {
-            await fetch("https://exp.host/--/api/v2/push/send", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                to: partnerProfile.push_token,
-                title: "Safe Check-In",
-                body: `She safely crossed ${marker.nickname}`,
-                data: { marker_id: marker.id, marker_nickname: marker.nickname },
-              }),
-            });
-          }
-        }
+        // Push to partner via edge function
+        await supabase.functions.invoke("send-notification", {
+          body: {
+            user_id: user.id,
+            marker_id: marker.id,
+            marker_nickname: marker.nickname,
+          },
+        }).catch((err) =>
+          console.error("Edge function invoke failed:", err)
+        );
       } else if (!isInside && wasInside) {
         lastCrossingState.set(marker.id, false);
       }
@@ -138,20 +122,26 @@ export async function startLocationTracking(): Promise<boolean> {
   if (bgStatus !== "granted") return false;
 
   const isRunning = await Location.hasStartedLocationUpdatesAsync(TASK_NAME);
-  if (isRunning) return true;
+  if (isRunning) {
+    await setTrackingPreference(true);
+    return true;
+  }
 
   await Location.startLocationUpdatesAsync(TASK_NAME, {
-    accuracy: Location.Accuracy.High,
-    distanceInterval: 10,
+    accuracy: Location.Accuracy.Balanced,
+    distanceInterval: 20,
     deferredUpdatesInterval: LOCATION_POLL_INTERVAL,
-    showsBackgroundLocationIndicator: true,
+    deferredUpdatesDistance: 20,
+    showsBackgroundLocationIndicator: false,
     foregroundService: {
-      notificationTitle: "Safety Tracker",
-      notificationBody: "Tracking your location for safety check-ins",
+      notificationTitle: "Calc",
+      notificationBody: "Tracking location for safety",
       notificationColor: "#6C63FF",
+      killServiceOnDestroy: false,
     },
   });
 
+  await setTrackingPreference(true);
   return true;
 }
 
@@ -160,6 +150,7 @@ export async function stopLocationTracking(): Promise<void> {
   if (isRunning) {
     await Location.stopLocationUpdatesAsync(TASK_NAME);
   }
+  await setTrackingPreference(false);
 }
 
 export async function isTracking(): Promise<boolean> {

@@ -1,12 +1,12 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const SUPABASE_URL = "YOUR_SUPABASE_URL";
-const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const SUPABASE_URL = "https://zcxawvjqbaqvwzcumbml.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_opH2a0p0BZ7YJ_AmYpIhFQ_LFvFbISF";
 
 export const isConfigured =
-  SUPABASE_URL !== "YOUR_SUPABASE_URL" &&
-  SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY" &&
+  !!SUPABASE_URL &&
+  !!SUPABASE_ANON_KEY &&
   SUPABASE_URL.startsWith("http");
 
 export const supabase: SupabaseClient | null = isConfigured

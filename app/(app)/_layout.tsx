@@ -1,22 +1,24 @@
 import React, { useEffect } from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
-import { Tabs, usePathname, useRouter } from "expo-router";
+import { Tabs, usePathname, useRouter, Redirect } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { registerForPushNotifications } from "../../services/notifications";
 import { startLocationTracking } from "../../services/location";
+import { getTrackingPreference } from "../../lib/securestore";
 import {
   Home,
   MapPin,
   Link,
   Settings,
   Navigation,
+  AlertTriangle,
 } from "lucide-react-native";
 
 const TABS = [
   { name: "dashboard", label: "Home", icon: Home },
   { name: "feed", label: "Feed", icon: Navigation },
+  { name: "sos", label: "SOS", icon: AlertTriangle },
   { name: "markers", label: "Markers", icon: MapPin },
-  { name: "pairing", label: "Pair", icon: Link },
   { name: "settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -100,13 +102,20 @@ const tabStyles = StyleSheet.create({
 });
 
 export default function AppLayout() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
   useEffect(() => {
     if (!user) return;
     registerForPushNotifications(user.id);
-    startLocationTracking();
+    getTrackingPreference().then((wasEnabled) => {
+      if (wasEnabled) {
+        startLocationTracking();
+      }
+    });
   }, [user]);
+
+  if (loading) return null;
+  if (!user) return <Redirect href="/(auth)/login" />;
 
   return (
     <Tabs
@@ -117,8 +126,9 @@ export default function AppLayout() {
     >
       <Tabs.Screen name="dashboard" />
       <Tabs.Screen name="feed" />
+      <Tabs.Screen name="sos" />
       <Tabs.Screen name="markers" />
-      <Tabs.Screen name="pairing" />
+      <Tabs.Screen name="emergency-contacts" options={{ href: null }} />
       <Tabs.Screen name="settings" />
     </Tabs>
   );

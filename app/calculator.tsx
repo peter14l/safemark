@@ -1,43 +1,47 @@
-import React, { useState, useRef } from "react";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from "react-native-reanimated";
+import React, { useState, useRef, useCallback } from "react";
+import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Calculator } from "../components/Calculator";
 import { PinInput } from "../components/PinInput";
 import { hasPin, verifyPin } from "../lib/securestore";
+import { getCurrentUser } from "../services/auth";
 
 export default function CalculatorScreen() {
   const [showPin, setShowPin] = useState(false);
   const router = useRouter();
-  const translateY = useSharedValue(0);
+  const touchCountRef = useRef(0);
+  const cooldownRef = useRef(false);
 
-  const threeFingerSwipe = Gesture.Pan()
-    .onUpdate((e) => {
-      if (e.numberOfPointers >= 3) {
-        translateY.value = Math.max(0, e.translationY);
+  const handleTouchStart = useCallback(
+    (e: { nativeEvent: { touches: Array<unknown> } }) => {
+      if (cooldownRef.current) return;
+      const count = e.nativeEvent.touches.length;
+      touchCountRef.current = Math.max(touchCountRef.current, count);
+
+      if (count >= 3 && touchCountRef.current >= 3) {
+        cooldownRef.current = true;
+        touchCountRef.current = 0;
+        setShowPin(true);
       }
-    })
-    .onEnd((e) => {
-      if (e.numberOfPointers >= 3 && translateY.value > 80) {
-        translateY.value = withSpring(0, {}, () => {
-          setShowPin(true);
-        });
-      } else {
-        translateY.value = withSpring(0);
-      }
-    });
+    },
+    []
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    if (touchCountRef.current === 0) return;
+    touchCountRef.current = 0;
+    setTimeout(() => {
+      cooldownRef.current = false;
+    }, 500);
+  }, []);
 
   const handlePinSuccess = async () => {
     setShowPin(false);
-    const pinSet = await hasPin();
-    if (pinSet) {
+    const user = await getCurrentUser();
+    if (user) {
       router.replace("/(app)/dashboard");
     } else {
-      router.replace("/(app)/setup-pin");
+      router.replace("/(auth)/login");
     }
   };
 
@@ -56,10 +60,12 @@ export default function CalculatorScreen() {
   }
 
   return (
-    <GestureDetector gesture={threeFingerSwipe}>
-      <Animated.View className="flex-1">
-        <Calculator />
-      </Animated.View>
-    </GestureDetector>
+    <View
+      style={{ flex: 1 }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      <Calculator />
+    </View>
   );
 }
