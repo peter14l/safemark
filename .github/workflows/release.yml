@@ -29,12 +29,14 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+      - name: Save keystore to file
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
 
       - name: Prebuild
         run: npx expo prebuild --platform android --clean
+
+      - name: Place keystore
+        run: cp /tmp/release.keystore android/app/release.keystore
 
       - name: Extract version from tag
         id: version
@@ -81,6 +83,6 @@ jobs:
             safework-v${{ steps.version.outputs.VERSION }}-arm64-v8a.apk
             safework-v${{ steps.version.outputs.VERSION }}-armeabi-v7a.apk
 
-      - name: Cleanup keystore
+      - name: Cleanup
         if: always()
-        run: rm -f android/app/release.keystore
+        run: rm -f /tmp/release.keystore android/app/release.keystore
