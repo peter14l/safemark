@@ -3,6 +3,7 @@ import * as Location from "expo-location";
 import { getEmergencyContacts, EmergencyContact } from "../lib/contacts";
 import { startAudioRecording, stopAudioRecording, getClipCount } from "./audioRecorder";
 import { supabase, isConfigured } from "./supabase";
+import { getSessionPin, clearSessionPin } from "./session-pin";
 
 let sosActive = false;
 let sosStartTime = 0;
@@ -59,7 +60,7 @@ export async function activateSOS(): Promise<{
     }
   }
 
-  // Start audio recording
+  // Start audio recording with session PIN for encryption
   await startAudioRecording();
 
   sosActive = true;
@@ -99,6 +100,7 @@ export async function activateSOS(): Promise<{
 
 export async function deactivateSOS(): Promise<number> {
   await stopAudioRecording();
+  clearSessionPin();
   const clips = await getClipCount();
   sosActive = false;
 

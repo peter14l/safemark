@@ -2,6 +2,21 @@
 
 All notable changes to SafeMark.
 
+## [1.2.0] — 2026-07-14
+
+### Added
+- **Web Crypto Support** — Integrated `expo-standard-web-crypto` to polyfill global `crypto.subtle` APIs at the React Native runtime level for file/audio and queue encryption.
+- **Markers Database Trigger** — Introduced [supabase-schema-markers-lat-lng.sql](file:///D:/tracker/safemark/supabase-schema-markers-lat-lng.sql) to add `latitude` and `longitude` columns to the `markers` table and keep PostGIS spatial `location` geography automatically synchronized.
+- **Profiles Auto-creation Trigger** — Introduced [supabase-schema-profiles-trigger.sql](file:///D:/tracker/safemark/supabase-schema-profiles-trigger.sql) to automatically handle creating missing profiles upon user signup.
+- **Pairings RLS Fix Migration** — Introduced [supabase-schema-pairings-rls-fix.sql](file:///D:/tracker/safemark/supabase-schema-pairings-rls-fix.sql) to support reciprocal pairing row inserts by the authenticated user.
+- **Android Release Key Configuration** — Created a new standalone release keystore, stored properties locally in gitignored file, and registered variables to GitHub Repository Secrets.
+
+### Fixed
+- **`Property 'crypto' doesn't exist` Crash** — Migrated random value and UUID generation in `pairing.ts`, `contacts.ts`, and `markers.ts` to use `expo-crypto`'s native APIs (`getRandomBytes`, `randomUUID`).
+- **Silent Pairing Failure** — Statically imported `redeemInviteCode` in the pairing screen UI and added error validation checks on database insertions to throw and display errors as Native Alerts.
+- **ESLint Clean-up** — Resolved 33 compiler errors and 24 warnings (duplicate imports, component declaration in render body, unescaped quotes) across the React Native code.
+- **Argon2 Bundler Compatibility** — Removed native C-based `@node-rs/argon2` module from `package.json` and migrated password hashing to a salted SHA-256 algorithm via `expo-crypto` in `pin-hash.ts`.
+
 ## [1.1.0] — 2026-07-12
 
 ### Added

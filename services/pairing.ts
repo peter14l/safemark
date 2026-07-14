@@ -1,11 +1,13 @@
 import { supabase, isConfigured } from "./supabase";
 import { INVITE_CODE_EXPIRY_HOURS } from "../lib/constants";
+import { getRandomBytes } from "expo-crypto";
 
 function generateCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = getRandomBytes(6);
   let code = "";
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[bytes[i] % chars.length];
   }
   return code;
 }
@@ -17,11 +19,12 @@ export async function createInviteCode(userId: string): Promise<string> {
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + INVITE_CODE_EXPIRY_HOURS);
 
-  await supabase.from("invite_codes").insert({
+  const { error } = await supabase.from("invite_codes").insert({
     code,
     created_by: userId,
     expires_at: expiresAt.toISOString(),
   });
+  if (error) throw error;
 
   return code;
 }
@@ -43,15 +46,17 @@ export async function redeemInviteCode(
   if (new Date(invite.expires_at) < new Date()) throw new Error("Code expired");
   if (invite.created_by === userId) throw new Error("Cannot pair with yourself");
 
-  await supabase
+  const { error: updateError } = await supabase
     .from("invite_codes")
     .update({ used: true })
     .eq("id", invite.id);
+  if (updateError) throw updateError;
 
-  await supabase.from("pairings").insert([
+  const { error: insertError } = await supabase.from("pairings").insert([
     { user_id: userId, partner_id: invite.created_by },
     { user_id: invite.created_by, partner_id: userId },
   ]);
+  if (insertError) throw insertError;
 
   return invite.created_by;
 }

@@ -1,23 +1,26 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
 import { Tabs, usePathname, useRouter, Redirect } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { registerForPushNotifications } from "../../services/notifications";
 import { startLocationTracking } from "../../services/location";
-import { getTrackingPreference } from "../../lib/securestore";
+import { getTrackingPreference, isOnboardingComplete } from "../../lib/securestore";
+import { startTamperDetection } from "../../services/tamper";
+import { flushOfflineQueue } from "../../lib/offline-queue";
 import {
   Home,
   MapPin,
-  Link,
-  Settings,
   Navigation,
   AlertTriangle,
+  Flag,
+  Settings,
 } from "lucide-react-native";
 
 const TABS = [
   { name: "dashboard", label: "Home", icon: Home },
   { name: "feed", label: "Feed", icon: Navigation },
   { name: "sos", label: "SOS", icon: AlertTriangle },
+  { name: "trip", label: "Trip", icon: Flag },
   { name: "markers", label: "Markers", icon: MapPin },
   { name: "settings", label: "Settings", icon: Settings },
 ] as const;
@@ -82,7 +85,6 @@ const tabStyles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 6,
     gap: 4,
-    // shadow
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
@@ -103,6 +105,11 @@ const tabStyles = StyleSheet.create({
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isOnboardingComplete().then(setOnboardingDone);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -112,9 +119,12 @@ export default function AppLayout() {
         startLocationTracking();
       }
     });
+    startTamperDetection();
+    flushOfflineQueue();
   }, [user]);
 
-  if (loading) return null;
+  if (loading || onboardingDone === null) return null;
+  if (!onboardingDone) return <Redirect href="/onboarding" />;
   if (!user) return <Redirect href="/(auth)/login" />;
 
   return (
@@ -127,8 +137,10 @@ export default function AppLayout() {
       <Tabs.Screen name="dashboard" />
       <Tabs.Screen name="feed" />
       <Tabs.Screen name="sos" />
+      <Tabs.Screen name="trip" />
       <Tabs.Screen name="markers" />
       <Tabs.Screen name="emergency-contacts" options={{ href: null }} />
+      <Tabs.Screen name="pairing" options={{ href: null }} />
       <Tabs.Screen name="settings" />
     </Tabs>
   );

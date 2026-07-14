@@ -38,7 +38,9 @@ export default function FeedScreen() {
   }, [user]);
 
   useEffect(() => {
-    fetchFeed();
+    Promise.resolve().then(() => {
+      fetchFeed();
+    });
   }, [fetchFeed]);
 
   useEffect(() => {

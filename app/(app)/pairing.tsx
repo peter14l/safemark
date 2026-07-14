@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
-import { createInviteCode, getPartner } from "../../services/pairing";
+import { createInviteCode, getPartner, redeemInviteCode } from "../../services/pairing";
 import { Check, RefreshCw, User } from "lucide-react-native";
 
 export default function PairingScreen() {
@@ -23,7 +23,9 @@ export default function PairingScreen() {
 
   useEffect(() => {
     if (!user) {
-      setLoading(false);
+      Promise.resolve().then(() => {
+        setLoading(false);
+      });
       return;
     }
     getPartner(user.id).then((p) => {
@@ -73,7 +75,7 @@ export default function PairingScreen() {
           <View className="mt-6 bg-success/10 px-4 py-3 rounded-xl flex-row items-center gap-2">
             <Check size={16} color="#00C853" strokeWidth={2} />
             <Text className="text-success text-sm font-medium">
-              You'll receive their location updates
+              You&apos;ll receive their location updates
             </Text>
           </View>
         </View>
@@ -126,7 +128,7 @@ export default function PairingScreen() {
       {/* Enter Code */}
       <View className="bg-bg-card rounded-2xl p-5">
         <Text className="text-white text-lg font-semibold mb-2">
-          Enter Partner's Code
+          Enter Partner&apos;s Code
         </Text>
         <Text className="text-muted text-sm mb-4">
           Paste the code your partner shared
@@ -147,7 +149,6 @@ export default function PairingScreen() {
             if (!user || redeemCode.length !== 6) return;
             setRedeeming(true);
             try {
-              const { redeemInviteCode } = await import("../../services/pairing");
               await redeemInviteCode(redeemCode, user.id);
               const p = await getPartner(user.id);
               setPartner(p);

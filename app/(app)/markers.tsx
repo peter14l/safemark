@@ -7,6 +7,7 @@ import {
   TextInput,
   Alert,
   Modal,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
@@ -14,7 +15,9 @@ import { useMarkers } from "../../hooks/useMarkers";
 import { useLocation } from "../../hooks/useLocation";
 import { MarkerCard } from "../../components/MarkerCard";
 import { MARKER_RADII, DEFAULT_RADIUS } from "../../lib/constants";
-import { Plus, Crosshair } from "lucide-react-native";
+import { Plus, Crosshair, Map, Navigation } from "lucide-react-native";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function MarkersScreen() {
   const { user } = useAuth();
@@ -23,30 +26,66 @@ export default function MarkersScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [nickname, setNickname] = useState("");
   const [radius, setRadius] = useState(DEFAULT_RADIUS);
+  const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [useMapPick, setUseMapPick] = useState(false);
+  const [manualLat, setManualLat] = useState("");
+  const [manualLng, setManualLng] = useState("");
 
   const handleAdd = async () => {
     if (!nickname.trim()) {
       Alert.alert("Error", "Enter a nickname");
       return;
     }
-    if (!location) {
-      Alert.alert("Error", "Waiting for GPS location");
+
+    const lat = selectedCoords?.lat ?? location?.coords.latitude;
+    const lng = selectedCoords?.lng ?? location?.coords.longitude;
+
+    if (!lat || !lng) {
+      Alert.alert("Error", "Pick a location on the map or wait for GPS");
       return;
     }
 
     try {
-      await add(
-        nickname.trim(),
-        location.coords.latitude,
-        location.coords.longitude,
-        radius
-      );
+      await add(nickname.trim(), lat, lng, radius);
       setShowAdd(false);
       setNickname("");
       setRadius(DEFAULT_RADIUS);
+      setSelectedCoords(null);
+      setUseMapPick(false);
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
+  };
+
+  const openAddModal = () => {
+    setSelectedCoords(null);
+    setUseMapPick(false);
+    setManualLat("");
+    setManualLng("");
+    setShowAdd(true);
+  };
+
+  const useCurrentLocation = () => {
+    if (!location) {
+      Alert.alert("Error", "GPS not available yet");
+      return;
+    }
+    setSelectedCoords({
+      lat: location.coords.latitude,
+      lng: location.coords.longitude,
+    });
+    setManualLat(location.coords.latitude.toFixed(6));
+    setManualLng(location.coords.longitude.toFixed(6));
+  };
+
+  const applyManualCoords = () => {
+    const lat = parseFloat(manualLat);
+    const lng = parseFloat(manualLng);
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      Alert.alert("Error", "Enter valid coordinates (lat -90..90, lng -180..180)");
+      return;
+    }
+    setSelectedCoords({ lat, lng });
   };
 
   return (
@@ -55,7 +94,7 @@ export default function MarkersScreen() {
         <View className="flex-row items-center justify-between mb-1">
           <Text className="text-white text-2xl font-bold">Markers</Text>
           <TouchableOpacity
-            onPress={() => setShowAdd(true)}
+            onPress={openAddModal}
             activeOpacity={0.7}
             className="bg-accent px-4 py-2 rounded-xl flex-row items-center gap-2"
           >
@@ -107,15 +146,96 @@ export default function MarkersScreen() {
       {/* Add Marker Modal */}
       <Modal visible={showAdd} animationType="slide" transparent>
         <View className="flex-1 bg-black/60 justify-end">
-          <View className="bg-bg-card rounded-t-3xl px-6 pt-6 pb-10">
+          <View className="bg-bg-card rounded-t-3xl px-6 pt-6 pb-10" style={{ maxHeight: SCREEN_HEIGHT * 0.85 }}>
             <View className="w-10 h-1 bg-bg-elevated rounded-full self-center mb-6" />
 
             <Text className="text-white text-xl font-semibold mb-1">
               Add Marker
             </Text>
             <Text className="text-muted text-sm mb-5">
-              Uses your current GPS location
+              Tap the map or use current GPS
             </Text>
+
+            {/* Map toggle */}
+            <View className="flex-row gap-2 mb-4">
+              <TouchableOpacity
+                onPress={() => setUseMapPick(false)}
+                activeOpacity={0.7}
+                className={`flex-1 py-3 rounded-xl items-center flex-row justify-center gap-2 ${
+                  !useMapPick ? "bg-accent" : "bg-bg"
+                }`}
+              >
+                <Crosshair size={16} color={!useMapPick ? "#FFFFFF" : "#8888AA"} />
+                <Text className={`text-sm font-medium ${!useMapPick ? "text-white" : "text-muted"}`}>
+                  Current GPS
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setUseMapPick(true)}
+                activeOpacity={0.7}
+                className={`flex-1 py-3 rounded-xl items-center flex-row justify-center gap-2 ${
+                  useMapPick ? "bg-accent" : "bg-bg"
+                }`}
+              >
+                <Map size={16} color={useMapPick ? "#FFFFFF" : "#8888AA"} />
+                <Text className={`text-sm font-medium ${useMapPick ? "text-white" : "text-muted"}`}>
+                  Pick on Map
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Map picker */}
+            {useMapPick && (
+              <View className="mb-4">
+                {/* Use Current Location button */}
+                <TouchableOpacity
+                  onPress={useCurrentLocation}
+                  activeOpacity={0.7}
+                  className="flex-row items-center justify-center gap-2 py-3 rounded-xl bg-accent/15 mb-3"
+                >
+                  <Navigation size={14} color="#6C63FF" />
+                  <Text className="text-accent text-sm font-medium">Use Current GPS Location</Text>
+                </TouchableOpacity>
+
+                {/* Manual coordinate input */}
+                <View className="flex-row gap-2 mb-2">
+                  <TextInput
+                    value={manualLat}
+                    onChangeText={setManualLat}
+                    placeholder="Latitude"
+                    placeholderTextColor="#555570"
+                    keyboardType="numeric"
+                    className="flex-1 bg-bg rounded-xl px-4 py-3 text-white text-sm"
+                  />
+                  <TextInput
+                    value={manualLng}
+                    onChangeText={setManualLng}
+                    placeholder="Longitude"
+                    placeholderTextColor="#555570"
+                    keyboardType="numeric"
+                    className="flex-1 bg-bg rounded-xl px-4 py-3 text-white text-sm"
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={applyManualCoords}
+                  activeOpacity={0.7}
+                  className="py-2.5 rounded-xl bg-bg items-center mb-3"
+                >
+                  <Text className="text-muted text-sm">Set Coordinates</Text>
+                </TouchableOpacity>
+
+                {selectedCoords && (
+                  <View className="bg-bg rounded-xl p-3">
+                    <View className="flex-row items-center gap-2">
+                      <Crosshair size={12} color="#8888AA" />
+                      <Text className="text-accent text-sm font-medium">
+                        {selectedCoords.lat.toFixed(6)}, {selectedCoords.lng.toFixed(6)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
 
             <TextInput
               value={nickname}
@@ -147,7 +267,8 @@ export default function MarkersScreen() {
               ))}
             </View>
 
-            {location && (
+            {/* Current location preview (when not using map) */}
+            {!useMapPick && location && (
               <View className="bg-bg rounded-xl p-3 mb-5">
                 <View className="flex-row items-center gap-2 mb-1">
                   <Crosshair size={12} color="#8888AA" />
@@ -168,6 +289,8 @@ export default function MarkersScreen() {
                 onPress={() => {
                   setShowAdd(false);
                   setNickname("");
+                  setSelectedCoords(null);
+                  setUseMapPick(false);
                 }}
                 activeOpacity={0.7}
                 className="flex-1 bg-bg py-4 rounded-xl items-center"

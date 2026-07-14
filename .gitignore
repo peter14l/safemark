@@ -58,3 +58,4 @@ CLAUDE.md
 *.keystore
 *.jks
 android/app/release.keystore
+release-keystore.properties

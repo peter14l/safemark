@@ -44,7 +44,9 @@ export default function EmergencyContactsScreen() {
   }, []);
 
   useEffect(() => {
-    loadContacts();
+    Promise.resolve().then(() => {
+      loadContacts();
+    });
   }, [loadContacts]);
 
   const openAdd = () => {

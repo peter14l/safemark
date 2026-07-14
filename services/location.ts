@@ -1,14 +1,26 @@
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
-import { TASK_NAME, LOCATION_POLL_INTERVAL } from "../lib/constants";
+import * as Battery from "expo-battery";
+import { TASK_NAME, LOCATION_POLL_INTERVAL, HEARTBEAT_INTERVAL_MIN, SPEED_THRESHOLD_KMH, BREADCRUMB_MAX_COUNT } from "../lib/constants";
 import { haversineDistance } from "../lib/geofence";
 import { sendLocalNotification } from "./notifications";
 import { supabase, isConfigured } from "./supabase";
 import { setTrackingPreference } from "../lib/securestore";
+import { checkTripArrival } from "./trips";
+import { sendHeartbeat } from "./heartbeat";
+import { checkSpeedAndAlert } from "./speed";
+import { checkNetworkChange, logNetworkEvent } from "./network";
+import { enqueueEvent, flushOfflineQueue } from "../lib/offline-queue";
+import { getSettings } from "../lib/settings";
+import { reverseGeocode } from "../lib/geocoding";
 
 const lastCrossingState = new Map<string, boolean>();
 let lastFeedUpdate = 0;
 const FEED_UPDATE_INTERVAL = 60_000;
+let lastBreadcrumbTime = 0;
+const BREADCRUMB_INTERVAL = 60_000;
+let lastNetworkCheck = 0;
+const NETWORK_CHECK_INTERVAL = 120_000;
 
 TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
   if (error) {
@@ -16,29 +28,111 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
     return;
   }
 
-  if (!isConfigured || !supabase) return;
-
   const locations = (data as { locations: Location.LocationObject[] })?.locations;
   if (!locations?.length) return;
 
   const location = locations[0];
-  const { latitude, longitude, accuracy } = location.coords;
+  const { latitude, longitude, accuracy, speed } = location.coords;
 
   try {
+    // Flush offline queue when we have connectivity
+    if (isConfigured && supabase) {
+      await flushOfflineQueue();
+    }
+
+    if (!isConfigured || !supabase) return;
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Share location update to feed (throttled to every 60s)
+    const settings = await getSettings();
+
+    // Share location update to feed (throttled)
     const now = Date.now();
     if (now - lastFeedUpdate > FEED_UPDATE_INTERVAL) {
       lastFeedUpdate = now;
+      const address = await reverseGeocode(latitude, longitude);
       await supabase.from("location_feed").insert({
         user_id: user.id,
         latitude,
         longitude,
         accuracy,
         event_type: "location_update",
+        address,
       });
+    }
+
+    // Breadcrumbs trail
+    if (now - lastBreadcrumbTime > BREADCRUMB_INTERVAL) {
+      lastBreadcrumbTime = now;
+      const address = await reverseGeocode(latitude, longitude);
+      const { error: bcErr } = await supabase.from("breadcrumbs").insert({
+        user_id: user.id,
+        latitude,
+        longitude,
+        speed: speed ?? null,
+        heading: location.coords.heading ?? null,
+        address,
+      });
+
+      if (bcErr) {
+        await enqueueEvent("breadcrumb", {
+          latitude,
+          longitude,
+          speed: speed ?? null,
+          heading: location.coords.heading ?? null,
+        });
+      }
+
+      // Prune old breadcrumbs
+      const { data: bcCount } = await supabase
+        .from("breadcrumbs")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      if (bcCount && (bcCount as any).count > BREADCRUMB_MAX_COUNT) {
+        const { data: oldBc } = await supabase
+          .from("breadcrumbs")
+          .select("id")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true })
+          .limit((bcCount as any).count - BREADCRUMB_MAX_COUNT);
+
+        if (oldBc?.length) {
+          const ids = oldBc.map((b) => b.id);
+          await supabase.from("breadcrumbs").delete().in("id", ids);
+        }
+      }
+    }
+
+    // Heartbeat
+    let batteryLevel: number | undefined;
+    try {
+      batteryLevel = await Battery.getBatteryLevelAsync();
+    } catch {}
+    await sendHeartbeat(latitude, longitude, batteryLevel);
+
+    // Speed alert
+    if (speed && speed > 0) {
+      await checkSpeedAndAlert(
+        latitude,
+        longitude,
+        speed,
+        settings.speedThresholdKmh
+      );
+    }
+
+    // Network change check (throttled)
+    if (now - lastNetworkCheck > NETWORK_CHECK_INTERVAL) {
+      lastNetworkCheck = now;
+      const networkResult = await checkNetworkChange();
+      if (networkResult.changed && networkResult.type) {
+        await logNetworkEvent(
+          networkResult.type,
+          networkResult.ssid,
+          undefined
+        );
+      }
     }
 
     // Check geofences
@@ -70,7 +164,6 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
       if (isInside && !wasInside) {
         lastCrossingState.set(marker.id, true);
 
-        // Log crossing event
         await supabase.from("geofence_events").insert({
           user_id: user.id,
           marker_id: marker.id,
@@ -79,7 +172,6 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
           longitude,
         });
 
-        // Add to feed
         await supabase.from("location_feed").insert({
           user_id: user.id,
           latitude,
@@ -87,15 +179,14 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
           accuracy,
           event_type: "geofence_crossing",
           marker_nickname: marker.nickname,
+          address: await reverseGeocode(latitude, longitude),
         });
 
-        // Local notification
         await sendLocalNotification(
           "Safe Check-In",
           `You crossed ${marker.nickname}`
         );
 
-        // Push to partner via edge function
         await supabase.functions.invoke("send-notification", {
           body: {
             user_id: user.id,
@@ -109,8 +200,11 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
         lastCrossingState.set(marker.id, false);
       }
     }
+
+    // Check trip arrival
+    await checkTripArrival(latitude, longitude, accuracy);
   } catch (err) {
-    console.error("Geofence check error:", err);
+    console.error("Location task error:", err);
   }
 });
 

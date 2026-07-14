@@ -1,13 +1,53 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, TouchableOpacity, ScrollView } from "react-native";
+import { getCalcHistory, addCalcEntry, CalcEntry } from "../lib/calculator-history";
 
 type Operation = "+" | "-" | "×" | "÷" | null;
 
-export function Calculator() {
+interface ButtonProps {
+  label: string;
+  wide?: boolean;
+  accent?: boolean;
+  dim?: boolean;
+  onPress: () => void;
+}
+
+const Button = ({
+  label,
+  wide,
+  accent,
+  dim,
+  onPress,
+}: ButtonProps) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.7}
+    className={`${
+      wide ? "w-[148px]" : "w-[68px]"
+    } h-[68px] rounded-full items-center justify-center ${
+      accent ? "bg-accent" : dim ? "bg-bg-elevated" : "bg-bg-card"
+    }`}
+  >
+    <Text
+      className={`text-2xl font-medium ${
+        accent ? "text-white" : dim ? "text-muted" : "text-white"
+      }`}
+    >
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+export function Calculator({ showHistory = false }: { showHistory?: boolean }) {
   const [display, setDisplay] = useState("0");
   const [prev, setPrev] = useState<number | null>(null);
   const [op, setOp] = useState<Operation>(null);
   const [fresh, setFresh] = useState(true);
+  const [history, setHistory] = useState<CalcEntry[]>([]);
+
+  useEffect(() => {
+    getCalcHistory().then(setHistory);
+  }, []);
 
   const inputDigit = (d: string) => {
     if (fresh) {
@@ -64,44 +104,51 @@ export function Calculator() {
 
   const equals = () => {
     if (prev === null || !op) return;
-    performOp(null);
-    setOp(null);
-  };
+    const current = parseFloat(display);
+    let result: number;
+    switch (op) {
+      case "+": result = prev + current; break;
+      case "-": result = prev - current; break;
+      case "×": result = prev * current; break;
+      case "÷": result = current !== 0 ? prev / current : 0; break;
+      default: result = current;
+    }
 
-  const Button = ({
-    label,
-    wide,
-    accent,
-    dim,
-    onPress,
-  }: {
-    label: string;
-    wide?: boolean;
-    accent?: boolean;
-    dim?: boolean;
-    onPress: () => void;
-  }) => (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      className={`${
-        wide ? "w-[148px]" : "w-[68px]"
-      } h-[68px] rounded-full items-center justify-center ${
-        accent ? "bg-accent" : dim ? "bg-bg-elevated" : "bg-bg-card"
-      }`}
-    >
-      <Text
-        className={`text-2xl font-medium ${
-          accent ? "text-white" : dim ? "text-muted" : "text-white"
-        }`}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+    const expression = `${prev} ${op} ${display}`;
+    const resultStr = String(result);
+    addCalcEntry(expression, resultStr).then(() => {
+      getCalcHistory().then(setHistory);
+    });
+
+    setDisplay(resultStr);
+    setPrev(null);
+    setOp(null);
+    setFresh(true);
+  };
 
   return (
     <View className="flex-1 bg-bg px-5 pt-16 pb-8 justify-end">
+      {/* Fake history */}
+      {showHistory && history.length > 0 && (
+        <ScrollView
+          className="mb-4"
+          style={{ maxHeight: 120 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {history.slice(0, 5).map((entry, i) => (
+            <TouchableOpacity
+              key={`${entry.timestamp}-${i}`}
+              activeOpacity={0.7}
+              onPress={() => setDisplay(entry.result)}
+              className="items-end py-1"
+            >
+              <Text className="text-muted text-xs">{entry.expression}</Text>
+              <Text className="text-muted/60 text-lg">= {entry.result}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
       <View className="items-end mb-6">
         <Text
           className="text-white font-light"

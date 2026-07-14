@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import * as Location from "expo-location";
 import { useLocation } from "../../hooks/useLocation";
 import {
   activateSOS,
@@ -58,7 +57,9 @@ export default function SOSScreen() {
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
-      setElapsed(0);
+      Promise.resolve().then(() => {
+        setElapsed(0);
+      });
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -66,7 +67,9 @@ export default function SOSScreen() {
   }, [active]);
 
   useEffect(() => {
-    setRecording(isSOSActive());
+    Promise.resolve().then(() => {
+      setRecording(isSOSActive());
+    });
   }, [active]);
 
   const handleActivate = async () => {

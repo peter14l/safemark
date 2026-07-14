@@ -1,6 +1,15 @@
 import React from "react";
 import { View, Text } from "react-native";
-import { MapPin, Navigation, Clock } from "lucide-react-native";
+import {
+  MapPin,
+  Navigation,
+  Clock,
+  Flag,
+  Zap,
+  Wifi,
+  Shield,
+  Heart,
+} from "lucide-react-native";
 
 export interface FeedItem {
   id: string;
@@ -9,6 +18,7 @@ export interface FeedItem {
   longitude: number;
   accuracy: number | null;
   marker_nickname: string | null;
+  address: string | null;
   created_at: string;
 }
 
@@ -27,10 +37,20 @@ function EventIcon({ type }: { type: string }) {
   switch (type) {
     case "geofence_crossing":
       return <MapPin size={14} color="#00C853" />;
+    case "trip_arrival":
+      return <Flag size={14} color="#FFB300" />;
     case "journey_start":
       return <Navigation size={14} color="#6C63FF" />;
     case "journey_end":
       return <Navigation size={14} color="#FF5252" />;
+    case "speed_alert":
+      return <Zap size={14} color="#FF9100" />;
+    case "network_change":
+      return <Wifi size={14} color="#00BCD4" />;
+    case "tamper_detected":
+      return <Shield size={14} color="#FF1744" />;
+    case "heartbeat":
+      return <Heart size={14} color="#E91E63" />;
     default:
       return <Clock size={14} color="#8888AA" />;
   }
@@ -45,10 +65,40 @@ function EventLabel({ item }: { item: FeedItem }) {
           <Text className="font-semibold">{item.marker_nickname}</Text>
         </Text>
       );
+    case "trip_arrival":
+      return (
+        <Text className="text-white text-sm">
+          Arrived at{" "}
+          <Text className="font-semibold">{item.marker_nickname}</Text>
+        </Text>
+      );
     case "journey_start":
       return <Text className="text-white text-sm">Started journey</Text>;
     case "journey_end":
       return <Text className="text-white text-sm">Ended journey</Text>;
+    case "speed_alert":
+      return (
+        <Text className="text-white text-sm">
+          Speed alert:{" "}
+          <Text className="font-semibold">{item.marker_nickname}</Text>
+        </Text>
+      );
+    case "network_change":
+      return (
+        <Text className="text-white text-sm">
+          {item.marker_nickname || "Network changed"}
+        </Text>
+      );
+    case "tamper_detected":
+      return (
+        <Text className="text-white text-sm">
+          <Text className="font-semibold text-danger">
+            {item.marker_nickname || "Tamper detected"}
+          </Text>
+        </Text>
+      );
+    case "heartbeat":
+      return <Text className="text-white text-sm">Still alive ping</Text>;
     default:
       return <Text className="text-white text-sm">Location update</Text>;
   }
@@ -62,6 +112,11 @@ export function FeedCard({ item }: { item: FeedItem }) {
       </View>
       <View className="flex-1">
         <EventLabel item={item} />
+        {item.address && (
+          <Text className="text-muted text-xs mt-1" numberOfLines={1}>
+            {item.address}
+          </Text>
+        )}
         <View className="flex-row items-center gap-2 mt-1">
           <Text className="text-muted text-xs">
             {timeAgo(item.created_at)}

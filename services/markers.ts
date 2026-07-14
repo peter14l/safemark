@@ -1,5 +1,7 @@
 import { supabase, isConfigured } from "./supabase";
 import { DEFAULT_RADIUS } from "../lib/constants";
+import { validateNickname, validateCoordinate, validateRadius } from "../lib/validation";
+import { randomUUID } from "expo-crypto";
 
 export interface Marker {
   id: string;
@@ -19,9 +21,19 @@ export async function createMarker(
   longitude: number,
   radiusMeters: number = DEFAULT_RADIUS
 ): Promise<Marker> {
+  if (!validateNickname(nickname)) {
+    throw new Error("Invalid nickname");
+  }
+  if (!validateCoordinate(latitude, longitude)) {
+    throw new Error("Invalid coordinates");
+  }
+  if (!validateRadius(radiusMeters)) {
+    throw new Error("Invalid radius");
+  }
+
   if (!isConfigured || !supabase) {
     return {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       user_id: userId,
       nickname,
       latitude,
@@ -37,7 +49,8 @@ export async function createMarker(
     .insert({
       user_id: userId,
       nickname,
-      location: `ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography`,
+      latitude,
+      longitude,
       radius_meters: radiusMeters,
     })
     .select()
@@ -66,6 +79,13 @@ export async function updateMarker(
   updates: Partial<Pick<Marker, "nickname" | "radius_meters" | "active">>
 ): Promise<void> {
   if (!isConfigured || !supabase) return;
+
+  if (updates.nickname !== undefined && !validateNickname(updates.nickname)) {
+    throw new Error("Invalid nickname");
+  }
+  if (updates.radius_meters !== undefined && !validateRadius(updates.radius_meters)) {
+    throw new Error("Invalid radius");
+  }
 
   const { error } = await supabase
     .from("markers")

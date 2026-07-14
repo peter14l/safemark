@@ -2,7 +2,7 @@
   "expo": {
     "name": "Calc",
     "slug": "safemark",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -19,7 +19,8 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "VIBRATE",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ]
     },
     "plugins": [
@@ -43,7 +44,8 @@
         }
       ],
       "react-native-maps",
-      "expo-router"
+      "expo-router",
+      "expo-asset"
     ]
   }
 }
