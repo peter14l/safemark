@@ -5,24 +5,12 @@ const KEY_LENGTH = 256;
 const IV_LENGTH = 12;
 const ITERATIONS = 100000;
 
-async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
-  const keyMaterial = await crypto.subtle.importKey(
+async function importKey(password: string): Promise<CryptoKey> {
+  const keyBytes = hexToUint8(password);
+  return crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
-
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: salt.buffer as ArrayBuffer,
-      iterations: ITERATIONS,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    { name: ALGORITHM, length: KEY_LENGTH },
+    keyBytes.buffer as ArrayBuffer,
+    { name: ALGORITHM },
     false,
     ["encrypt", "decrypt"]
   );
@@ -49,9 +37,8 @@ export interface EncryptedPayload {
 }
 
 export async function encryptData(data: string, password: string): Promise<EncryptedPayload> {
-  const salt = getRandomBytes(16);
   const iv = getRandomBytes(IV_LENGTH);
-  const key = await deriveKey(password, salt);
+  const key = await importKey(password);
 
   const encoded = new TextEncoder().encode(data);
   const encrypted = await crypto.subtle.encrypt(
@@ -65,7 +52,7 @@ export async function encryptData(data: string, password: string): Promise<Encry
   const ciphertext = encryptedBytes.slice(0, -16);
 
   return {
-    salt: uint8ToHex(salt),
+    salt: "", // No longer needed for key derivation, kept for type compatibility
     iv: uint8ToHex(iv),
     ciphertext: uint8ToHex(ciphertext),
     authTag: uint8ToHex(authTag),
@@ -77,12 +64,11 @@ export async function decryptData(
   encrypted: EncryptedPayload,
   password: string
 ): Promise<string> {
-  const salt = hexToUint8(encrypted.salt);
   const iv = hexToUint8(encrypted.iv);
   const ciphertext = hexToUint8(encrypted.ciphertext);
   const authTag = hexToUint8(encrypted.authTag);
 
-  const key = await deriveKey(password, salt);
+  const key = await importKey(password);
 
   const combined = new Uint8Array(ciphertext.length + authTag.length);
   combined.set(ciphertext);

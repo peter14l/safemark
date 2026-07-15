@@ -7,7 +7,10 @@ export function useLocation() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
+    let sub: Location.LocationSubscription | null = null;
+    let active = true;
+
+    async function startWatching() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setError("Location permission denied");
@@ -15,20 +18,42 @@ export function useLocation() {
         return;
       }
 
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      setLocation(loc);
-      setLoading(false);
+      if (!active) return;
 
-      const sub = Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, distanceInterval: 10 },
-        (loc) => setLocation(loc)
-      );
+      try {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        setLocation(loc);
+        setLoading(false);
+      } catch (err: any) {
+        setError(err.message);
+      }
 
-      return () => sub.then((s) => s.remove());
-    })();
+      if (!active) return;
+
+      try {
+        sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, distanceInterval: 10 },
+          (loc) => {
+            if (active) setLocation(loc);
+          }
+        );
+      } catch (err: any) {
+        console.error("watchPositionAsync error:", err);
+      }
+    }
+
+    startWatching();
+
+    return () => {
+      active = false;
+      if (sub) {
+        sub.remove();
+      }
+    };
   }, []);
 
   return { location, error, loading };
 }
+

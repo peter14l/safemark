@@ -2,6 +2,19 @@
 
 All notable changes to SafeMark.
 
+## [1.3.0] — 2026-07-15
+
+### Added
+- **Calculator Secret PIN Bypass** — Type your 6-digit PIN (real or decoy) directly into the calculator followed by `=` to unlock the app instantly. Incorrect entries remain silent (no error messages or lockouts shown) to preserve the calculator's disguise.
+- **File-Based Offline Queue** — Migrated the offline event queue from `SecureStore` (which has a strict 2KB size limit on Android) to `expo-file-system` to reliably support up to 100 history events.
+
+### Fixed
+- **Memory / Location Subscription Leak** — Restructured the `useLocation` hook to return a synchronous cleanup callback to properly unsubscribe from `Location.watchPositionAsync` when components unmount.
+- **Background Location Query Storm** — Optimized `location.ts` to select marker coordinates directly in a single database query, eliminating N+1 RPC network requests on every background tick.
+- **Background Auth Network Overhead** — Replaced `supabase.auth.getUser()` with local `supabase.auth.getSession()` and cached the user ID, removing redundant token verification API calls in the background service.
+- **Offline Event Queue Plaintext Bug** — Fixed a security vulnerability in the offline queue where previously stored events were saved in plaintext on subsequent enqueue cycles. All events now remain securely encrypted on disk.
+- **PBKDF2 CPU Bottlenecks** — Replaced slow 100,000-iteration PBKDF2 key derivation for the offline queue with direct AES-GCM key imports, reducing event queue processing latency from 100ms+ to under 1ms.
+
 ## [1.2.0] — 2026-07-14
 
 ### Added

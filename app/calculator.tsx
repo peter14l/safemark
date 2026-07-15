@@ -126,6 +126,23 @@ export default function CalculatorScreen() {
     return valid;
   };
 
+  const handleTriggerCode = async (code: string) => {
+    if (/^\d{6}$/.test(code)) {
+      const hasDecoy = await hasDecoyPin();
+      if (hasDecoy && (await verifyDecoyPin(code))) {
+        await recordSuccess();
+        handleDecoyPinSuccess();
+        return;
+      }
+      const hasReal = await hasPin();
+      if (hasReal && (await verifyPin(code))) {
+        await recordSuccess();
+        handlePinSuccess(code);
+        return;
+      }
+    }
+  };
+
   if (showDecoyScreen) {
     return (
       <View
@@ -155,7 +172,8 @@ export default function CalculatorScreen() {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <Calculator showHistory />
+      <Calculator showHistory onTriggerCode={handleTriggerCode} />
     </View>
   );
 }
+

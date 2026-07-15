@@ -1,8 +1,14 @@
 import * as SecureStore from "expo-secure-store";
+import {
+  documentDirectory,
+  getInfoAsync,
+  readAsStringAsync,
+  writeAsStringAsync,
+} from "expo-file-system/legacy";
 import { supabase, isConfigured } from "../services/supabase";
 import { encryptData, decryptData, EncryptedPayload } from "./queue-encryption";
 
-const QUEUE_KEY = "safemark_offline_queue";
+const QUEUE_FILE_PATH = (documentDirectory || "") + "offline_queue.json";
 const MAX_QUEUE_SIZE = 100;
 
 export interface QueuedEvent {
@@ -32,48 +38,42 @@ async function ensureQueueKey(): Promise<string> {
 }
 
 export async function getOfflineQueue(): Promise<QueuedEvent[]> {
-  const raw = await SecureStore.getItemAsync(QUEUE_KEY);
-  if (!raw) return [];
   try {
-    const encrypted = JSON.parse(raw) as QueuedEvent[];
-    const key = await getQueueEncryptionKey();
-    if (!key) return [];
-    
-    const decrypted = await Promise.all(
-      encrypted.map(async (e) => {
-        if (isEncryptedPayload(e.payload)) {
-          const decrypted = await decryptData(e.payload, key);
-          return { ...e, payload: JSON.parse(decrypted) };
-        }
-        return e;
-      })
-    );
-    return decrypted;
-  } catch {
+    const info = await getInfoAsync(QUEUE_FILE_PATH);
+    if (!info.exists) return [];
+    const raw = await readAsStringAsync(QUEUE_FILE_PATH, { encoding: "utf8" });
+    if (!raw) return [];
+    return JSON.parse(raw) as QueuedEvent[];
+  } catch (e) {
+    console.error("Error reading offline queue file:", e);
     return [];
   }
 }
 
 function isEncryptedPayload(payload: any): payload is EncryptedPayload {
-  return payload && typeof payload === "object" && "ciphertext" in payload && "salt" in payload;
+  return payload && typeof payload === "object" && "ciphertext" in payload && "iv" in payload;
 }
 
 export async function enqueueEvent(
   type: QueuedEvent["type"],
   payload: Record<string, unknown>
 ): Promise<void> {
-  const queue = await getOfflineQueue();
-  const key = await ensureQueueKey();
-  const encryptedPayload = await encryptData(JSON.stringify(payload), key);
-  
-  queue.push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    type,
-    payload: encryptedPayload,
-    timestamp: Date.now(),
-  });
-  if (queue.length > MAX_QUEUE_SIZE) queue.splice(0, queue.length - MAX_QUEUE_SIZE);
-  await SecureStore.setItemAsync(QUEUE_KEY, JSON.stringify(queue));
+  try {
+    const queue = await getOfflineQueue();
+    const key = await ensureQueueKey();
+    const encryptedPayload = await encryptData(JSON.stringify(payload), key);
+    
+    queue.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      type,
+      payload: encryptedPayload,
+      timestamp: Date.now(),
+    });
+    if (queue.length > MAX_QUEUE_SIZE) queue.splice(0, queue.length - MAX_QUEUE_SIZE);
+    await writeAsStringAsync(QUEUE_FILE_PATH, JSON.stringify(queue), { encoding: "utf8" });
+  } catch (e) {
+    console.error("Error enqueuing event:", e);
+  }
 }
 
 export async function flushOfflineQueue(): Promise<number> {
@@ -82,7 +82,8 @@ export async function flushOfflineQueue(): Promise<number> {
   const queue = await getOfflineQueue();
   if (queue.length === 0) return 0;
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return 0;
 
   const key = await getQueueEncryptionKey();
@@ -144,13 +145,6 @@ export async function flushOfflineQueue(): Promise<number> {
     }
   }
 
-  const encryptedRemaining = await Promise.all(
-    remaining.map(async (e) => ({
-      ...e,
-      payload: await encryptData(JSON.stringify(e.payload), key),
-    }))
-  );
-  
-  await SecureStore.setItemAsync(QUEUE_KEY, JSON.stringify(encryptedRemaining));
+  await writeAsStringAsync(QUEUE_FILE_PATH, JSON.stringify(remaining), { encoding: "utf8" });
   return flushed;
 }

@@ -38,7 +38,13 @@ const Button = ({
   </TouchableOpacity>
 );
 
-export function Calculator({ showHistory = false }: { showHistory?: boolean }) {
+export function Calculator({
+  showHistory = false,
+  onTriggerCode,
+}: {
+  showHistory?: boolean;
+  onTriggerCode?: (code: string) => void;
+}) {
   const [display, setDisplay] = useState("0");
   const [prev, setPrev] = useState<number | null>(null);
   const [op, setOp] = useState<Operation>(null);
@@ -103,7 +109,12 @@ export function Calculator({ showHistory = false }: { showHistory?: boolean }) {
   };
 
   const equals = () => {
-    if (prev === null || !op) return;
+    if (prev === null || !op) {
+      if (onTriggerCode) {
+        onTriggerCode(display);
+      }
+      return;
+    }
     const current = parseFloat(display);
     let result: number;
     switch (op) {
@@ -125,6 +136,7 @@ export function Calculator({ showHistory = false }: { showHistory?: boolean }) {
     setOp(null);
     setFresh(true);
   };
+
 
   return (
     <View className="flex-1 bg-bg px-5 pt-16 pb-8 justify-end">

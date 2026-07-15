@@ -14,6 +14,7 @@ import { enqueueEvent, flushOfflineQueue } from "../lib/offline-queue";
 import { getSettings } from "../lib/settings";
 import { reverseGeocode } from "../lib/geocoding";
 
+let cachedUserId: string | null = null;
 const lastCrossingState = new Map<string, boolean>();
 let lastFeedUpdate = 0;
 const FEED_UPDATE_INTERVAL = 60_000;
@@ -42,18 +43,36 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
 
     if (!isConfigured || !supabase) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    // Use cached user ID or fetch from local session synchronously without network overhead
+    let userId = cachedUserId;
+    if (!userId) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        cachedUserId = session.user.id;
+        userId = session.user.id;
+      }
+    }
+    if (!userId) return;
 
     const settings = await getSettings();
 
-    // Share location update to feed (throttled)
+    // Helper to lazy-load reverse geocode address once per tick
+    let cachedAddress: string | null = null;
+    const getAddress = async () => {
+      if (!cachedAddress) {
+        cachedAddress = await reverseGeocode(latitude, longitude);
+      }
+      return cachedAddress;
+    };
+
     const now = Date.now();
+
+    // Share location update to feed (throttled)
     if (now - lastFeedUpdate > FEED_UPDATE_INTERVAL) {
       lastFeedUpdate = now;
-      const address = await reverseGeocode(latitude, longitude);
+      const address = await getAddress();
       await supabase.from("location_feed").insert({
-        user_id: user.id,
+        user_id: userId,
         latitude,
         longitude,
         accuracy,
@@ -65,9 +84,9 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
     // Breadcrumbs trail
     if (now - lastBreadcrumbTime > BREADCRUMB_INTERVAL) {
       lastBreadcrumbTime = now;
-      const address = await reverseGeocode(latitude, longitude);
+      const address = await getAddress();
       const { error: bcErr } = await supabase.from("breadcrumbs").insert({
-        user_id: user.id,
+        user_id: userId,
         latitude,
         longitude,
         speed: speed ?? null,
@@ -88,13 +107,13 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
       const { data: bcCount } = await supabase
         .from("breadcrumbs")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id);
+        .eq("user_id", userId);
 
       if (bcCount && (bcCount as any).count > BREADCRUMB_MAX_COUNT) {
         const { data: oldBc } = await supabase
           .from("breadcrumbs")
           .select("id")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .order("created_at", { ascending: true })
           .limit((bcCount as any).count - BREADCRUMB_MAX_COUNT);
 
@@ -135,27 +154,23 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
       }
     }
 
-    // Check geofences
+    // Check geofences - fetch latitude and longitude directly to avoid N+1 RPC network requests
     const { data: markers } = await supabase
       .from("markers")
-      .select("id, nickname, radius_meters")
-      .eq("user_id", user.id)
+      .select("id, nickname, radius_meters, latitude, longitude")
+      .eq("user_id", userId)
       .eq("active", true);
 
     if (!markers?.length) return;
 
     for (const marker of markers) {
-      const { data: markerLocation } = await supabase.rpc("get_marker_location", {
-        marker_id: marker.id,
-      });
-
-      if (!markerLocation) continue;
+      if (marker.latitude === null || marker.longitude === null) continue;
 
       const dist = haversineDistance(
         latitude,
         longitude,
-        markerLocation.latitude,
-        markerLocation.longitude
+        marker.latitude,
+        marker.longitude
       );
 
       const isInside = dist <= marker.radius_meters;
@@ -165,21 +180,22 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
         lastCrossingState.set(marker.id, true);
 
         await supabase.from("geofence_events").insert({
-          user_id: user.id,
+          user_id: userId,
           marker_id: marker.id,
           event_type: "entered",
           latitude,
           longitude,
         });
 
+        const address = await getAddress();
         await supabase.from("location_feed").insert({
-          user_id: user.id,
+          user_id: userId,
           latitude,
           longitude,
           accuracy,
           event_type: "geofence_crossing",
           marker_nickname: marker.nickname,
-          address: await reverseGeocode(latitude, longitude),
+          address,
         });
 
         await sendLocalNotification(
@@ -189,7 +205,7 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
 
         await supabase.functions.invoke("send-notification", {
           body: {
-            user_id: user.id,
+            user_id: userId,
             marker_id: marker.id,
             marker_nickname: marker.nickname,
           },
@@ -240,6 +256,7 @@ export async function startLocationTracking(): Promise<boolean> {
 }
 
 export async function stopLocationTracking(): Promise<void> {
+  cachedUserId = null;
   const isRunning = await Location.hasStartedLocationUpdatesAsync(TASK_NAME);
   if (isRunning) {
     await Location.stopLocationUpdatesAsync(TASK_NAME);
@@ -250,3 +267,4 @@ export async function stopLocationTracking(): Promise<void> {
 export async function isTracking(): Promise<boolean> {
   return Location.hasStartedLocationUpdatesAsync(TASK_NAME);
 }
+
