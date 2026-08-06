@@ -78,8 +78,9 @@ async function recordClip(): Promise<string | null> {
         return encryptedPath;
       } catch (err) {
         console.error("Failed to encrypt recording:", err);
-        // Keep unencrypted version if encryption fails
-        return dest;
+        // Delete the unencrypted file — never leave plaintext clips on disk
+        await deleteAsync(dest).catch(() => {});
+        return null;
       }
     }
 

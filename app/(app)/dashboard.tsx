@@ -20,6 +20,8 @@ import {
   Navigation,
   ChevronRight,
   Users,
+  Phone,
+  Video,
 } from "lucide-react-native";
 import { isSOSActive } from "../../services/sos";
 import { getEmergencyContacts, EmergencyContact } from "../../lib/contacts";
@@ -227,13 +229,54 @@ export default function DashboardScreen() {
                   Linking.openURL(url);
                 }}
                 activeOpacity={0.7}
-                className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl bg-accent/15"
+                className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl bg-accent/15 mb-2"
               >
                 <Navigation size={14} color="#6C63FF" />
                 <Text className="text-accent text-sm font-medium">
                   {partnerLocation ? "Open Route in Maps" : "Open in Maps"}
                 </Text>
               </TouchableOpacity>
+
+              {/* Call buttons */}
+              <View className="flex-row gap-2 mt-1">
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(app)/call",
+                      params: {
+                        mode: "outgoing",
+                        calleeId: partner.id,
+                        calleeName: partner.name,
+                        callType: "audio",
+                      },
+                    })
+                  }
+                  activeOpacity={0.7}
+                  className="flex-1 flex-row items-center justify-center gap-2 py-3 rounded-xl bg-success/15"
+                >
+                  <Phone size={15} color="#00C853" strokeWidth={1.8} />
+                  <Text className="text-success text-sm font-medium">Voice Call</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(app)/call",
+                      params: {
+                        mode: "outgoing",
+                        calleeId: partner.id,
+                        calleeName: partner.name,
+                        callType: "video",
+                      },
+                    })
+                  }
+                  activeOpacity={0.7}
+                  className="flex-1 flex-row items-center justify-center gap-2 py-3 rounded-xl bg-accent/15"
+                >
+                  <Video size={15} color="#6C63FF" strokeWidth={1.8} />
+                  <Text className="text-accent text-sm font-medium">Video Call</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         )}

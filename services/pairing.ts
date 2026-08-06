@@ -46,17 +46,19 @@ export async function redeemInviteCode(
   if (new Date(invite.expires_at) < new Date()) throw new Error("Code expired");
   if (invite.created_by === userId) throw new Error("Cannot pair with yourself");
 
-  const { error: updateError } = await supabase
-    .from("invite_codes")
-    .update({ used: true })
-    .eq("id", invite.id);
-  if (updateError) throw updateError;
-
+  // Insert the pairing rows first — if this fails the code is NOT consumed
   const { error: insertError } = await supabase.from("pairings").insert([
     { user_id: userId, partner_id: invite.created_by },
     { user_id: invite.created_by, partner_id: userId },
   ]);
   if (insertError) throw insertError;
+
+  // Only mark code used after the pairings are confirmed to exist
+  const { error: updateError } = await supabase
+    .from("invite_codes")
+    .update({ used: true })
+    .eq("id", invite.id);
+  if (updateError) throw updateError;
 
   return invite.created_by;
 }
@@ -68,7 +70,8 @@ export async function getPartner(userId: string) {
     .from("pairings")
     .select("partner_id, profiles!partner_id(display_name)")
     .eq("user_id", userId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   return data ? { id: data.partner_id, name: (data.profiles as any)?.display_name } : null;
 }

@@ -214,6 +214,29 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
         );
       } else if (!isInside && wasInside) {
         lastCrossingState.set(marker.id, false);
+
+        await supabase.from("geofence_events").insert({
+          user_id: user.id,
+          marker_id: marker.id,
+          event_type: "exited",
+          latitude,
+          longitude,
+        });
+
+        await supabase.from("location_feed").insert({
+          user_id: user.id,
+          latitude,
+          longitude,
+          accuracy,
+          event_type: "geofence_crossing",
+          marker_nickname: marker.nickname,
+          address: await reverseGeocode(latitude, longitude),
+        });
+
+        await sendLocalNotification(
+          "Left Safe Zone",
+          `You left ${marker.nickname}`
+        );
       }
     }
 

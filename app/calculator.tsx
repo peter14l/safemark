@@ -101,8 +101,10 @@ export default function CalculatorScreen() {
     const hasDecoy = await hasDecoyPin();
     if (hasDecoy && (await verifyDecoyPin(pin))) {
       await recordSuccess();
+      // Transition to decoy screen WITHOUT calling onSuccess/handlePinSuccess
+      // (returning false prevents PinInput from navigating to the real app)
       handleDecoyPinSuccess();
-      return true;
+      return false;
     }
     // Then check real PIN
     const hasExisting = await hasPin();

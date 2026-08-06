@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Share } from "react-native";
 import {
   View,
   Text,
@@ -10,7 +11,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { createInviteCode, getPartner, redeemInviteCode } from "../../services/pairing";
-import { Check, RefreshCw, User } from "lucide-react-native";
+import { Check, RefreshCw, User, Share2 } from "lucide-react-native";
+import { supabase, isConfigured } from "../../services/supabase";
 
 export default function PairingScreen() {
   const { user } = useAuth();
@@ -21,18 +23,47 @@ export default function PairingScreen() {
   const [redeemCode, setRedeemCode] = useState("");
   const [redeeming, setRedeeming] = useState(false);
 
+  const refreshPartner = useCallback(async (uid: string) => {
+    const p = await getPartner(uid);
+    setPartner(p);
+  }, []);
+
   useEffect(() => {
     if (!user) {
-      Promise.resolve().then(() => {
-        setLoading(false);
-      });
+      setLoading(false);
       return;
     }
-    getPartner(user.id).then((p) => {
-      setPartner(p);
-      setLoading(false);
-    });
-  }, [user]);
+
+    // Initial load
+    refreshPartner(user.id).finally(() => setLoading(false));
+
+    // Real-time subscription — fires the moment a pairings row is
+    // inserted where this user is either side of the pair.
+    // This means Person A (who generated the code) sees the "Paired"
+    // view the instant Person B redeems — no manual refresh needed.
+    if (!isConfigured || !supabase) return;
+
+    const channel = supabase
+      .channel(`pairings:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "pairings",
+          filter: `partner_id=eq.${user.id}`,
+        },
+        () => {
+          // Partner just paired with us — re-fetch to get their name
+          refreshPartner(user.id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, refreshPartner]);
 
   const handleGenerate = async () => {
     if (!user) return;
@@ -45,6 +76,15 @@ export default function PairingScreen() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleShareLink = async () => {
+    if (!inviteCode) return;
+    const link = `safemark://pair?code=${inviteCode}`;
+    await Share.share({
+      message: `Join me on SafeMark — tap this link to pair with me:\n${link}`,
+      url: link, // iOS shows this as a tappable URL
+    });
   };
 
   if (loading) {
@@ -106,6 +146,15 @@ export default function PairingScreen() {
             </Text>
             <Text className="text-muted text-xs mt-2">Expires in 24 hours</Text>
           </View>
+
+          <TouchableOpacity
+            onPress={handleShareLink}
+            activeOpacity={0.7}
+            className="flex-row items-center justify-center gap-2 bg-accent/15 py-3 rounded-xl mt-3"
+          >
+            <Share2 size={16} color="#6C63FF" strokeWidth={2} />
+            <Text className="text-accent font-medium text-sm">Share Link</Text>
+          </TouchableOpacity>
         ) : (
           <TouchableOpacity
             onPress={handleGenerate}

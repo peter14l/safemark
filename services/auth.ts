@@ -2,14 +2,14 @@ import { supabase, isConfigured } from "./supabase";
 
 export async function signUp(email: string, password: string, displayName: string) {
   if (!isConfigured || !supabase) return { user: null };
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  // Pass displayName in user_metadata so the DB trigger (handle_new_user)
+  // picks it up automatically — no manual profiles.insert() needed.
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { display_name: displayName } },
+  });
   if (error) throw error;
-  if (data.user) {
-    await supabase.from("profiles").insert({
-      id: data.user.id,
-      display_name: displayName,
-    });
-  }
   return data;
 }
 

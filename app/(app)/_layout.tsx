@@ -7,6 +7,8 @@ import { startLocationTracking } from "../../services/location";
 import { getTrackingPreference, isOnboardingComplete } from "../../lib/securestore";
 import { startTamperDetection } from "../../services/tamper";
 import { flushOfflineQueue } from "../../lib/offline-queue";
+import { useIncomingCall } from "../../hooks/useIncomingCall";
+import { IncomingCallOverlay } from "../../components/IncomingCallOverlay";
 import {
   Home,
   MapPin,
@@ -14,6 +16,7 @@ import {
   AlertTriangle,
   Flag,
   Settings,
+  Phone,
 } from "lucide-react-native";
 
 const TABS = [
@@ -22,6 +25,7 @@ const TABS = [
   { name: "sos", label: "SOS", icon: AlertTriangle },
   { name: "trip", label: "Trip", icon: Flag },
   { name: "markers", label: "Markers", icon: MapPin },
+  { name: "call-logs", label: "Calls", icon: Phone },
   { name: "settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -106,6 +110,7 @@ const tabStyles = StyleSheet.create({
 export default function AppLayout() {
   const { user, loading } = useAuth();
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
+  const { incomingCall, dismissIncomingCall } = useIncomingCall(user?.id);
 
   useEffect(() => {
     isOnboardingComplete().then(setOnboardingDone);
@@ -128,20 +133,32 @@ export default function AppLayout() {
   if (!user) return <Redirect href="/(auth)/login" />;
 
   return (
-    <Tabs
-      tabBar={() => <FloatingTabBar />}
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen name="dashboard" />
-      <Tabs.Screen name="feed" />
-      <Tabs.Screen name="sos" />
-      <Tabs.Screen name="trip" />
-      <Tabs.Screen name="markers" />
-      <Tabs.Screen name="emergency-contacts" options={{ href: null }} />
-      <Tabs.Screen name="pairing" options={{ href: null }} />
-      <Tabs.Screen name="settings" />
-    </Tabs>
+    <View style={{ flex: 1 }}>
+      <Tabs
+        tabBar={() => <FloatingTabBar />}
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        <Tabs.Screen name="dashboard" />
+        <Tabs.Screen name="feed" />
+        <Tabs.Screen name="sos" />
+        <Tabs.Screen name="trip" />
+        <Tabs.Screen name="markers" />
+        <Tabs.Screen name="call-logs" />
+        <Tabs.Screen name="settings" />
+        <Tabs.Screen name="emergency-contacts" options={{ href: null }} />
+        <Tabs.Screen name="pairing" options={{ href: null }} />
+        <Tabs.Screen name="call" options={{ href: null }} />
+      </Tabs>
+
+      {/* Incoming call overlay — renders over everything */}
+      {incomingCall && (
+        <IncomingCallOverlay
+          call={incomingCall}
+          onDismiss={dismissIncomingCall}
+        />
+      )}
+    </View>
   );
 }
