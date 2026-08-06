@@ -140,21 +140,23 @@ export default function PairingScreen() {
         </Text>
 
         {inviteCode ? (
-          <View className="bg-bg rounded-xl p-4 items-center">
-            <Text className="text-accent text-3xl font-mono font-bold tracking-widest">
-              {inviteCode}
-            </Text>
-            <Text className="text-muted text-xs mt-2">Expires in 24 hours</Text>
-          </View>
+          <>
+            <View className="bg-bg rounded-xl p-4 items-center">
+              <Text className="text-accent text-3xl font-mono font-bold tracking-widest">
+                {inviteCode}
+              </Text>
+              <Text className="text-muted text-xs mt-2">Expires in 24 hours</Text>
+            </View>
 
-          <TouchableOpacity
-            onPress={handleShareLink}
-            activeOpacity={0.7}
-            className="flex-row items-center justify-center gap-2 bg-accent/15 py-3 rounded-xl mt-3"
-          >
-            <Share2 size={16} color="#6C63FF" strokeWidth={2} />
-            <Text className="text-accent font-medium text-sm">Share Link</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleShareLink}
+              activeOpacity={0.7}
+              className="flex-row items-center justify-center gap-2 bg-accent/15 py-3 rounded-xl mt-3"
+            >
+              <Share2 size={16} color="#6C63FF" strokeWidth={2} />
+              <Text className="text-accent font-medium text-sm">Share Link</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <TouchableOpacity
             onPress={handleGenerate}

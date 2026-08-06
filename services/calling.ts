@@ -69,7 +69,7 @@ function channelId(callId: string) {
   return `call:${callId}`;
 }
 
-async function getLocalStream(callType: CallType): Promise<MediaStream> {
+async function fetchLocalStream(callType: CallType): Promise<MediaStream> {
   const constraints = {
     audio: true,
     video:
@@ -194,7 +194,7 @@ export async function startCall(
   onCallEndedCallback = callbacks.onCallEnded;
 
   // 2. Get local media
-  localStream = await getLocalStream(callType);
+  localStream = await fetchLocalStream(callType);
 
   // 3. Create peer connection
   pc = createPeerConnection();
@@ -255,7 +255,7 @@ export async function answerCall(
     .eq("id", callId);
 
   // 2. Get local media
-  localStream = await getLocalStream(callType);
+  localStream = await fetchLocalStream(callType);
 
   // 3. Create peer connection
   pc = createPeerConnection();
