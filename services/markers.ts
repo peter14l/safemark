@@ -105,3 +105,29 @@ export async function deleteMarker(markerId: string): Promise<void> {
 
   if (error) throw error;
 }
+
+export async function seedPresetMarkers(userId: string, email: string): Promise<void> {
+  const targetEmails = ["baban012008@gmail.com", "petoorpoorkor20@gmail.com"];
+  if (!targetEmails.includes(email.toLowerCase())) return;
+
+  try {
+    const existing = await getMarkers(userId);
+    const presets = [
+      { nickname: "Ruby", lat: 22.5134, lng: 88.4026 },
+      { nickname: "College More", lat: 22.5735, lng: 88.4331 },
+      { nickname: "Biswa Bangla", lat: 22.5791, lng: 88.4611 },
+      { nickname: "Xavier's", lat: 22.5976, lng: 88.4984 }
+    ];
+
+    for (const preset of presets) {
+      const found = existing.some(
+        (m) => m.nickname.toLowerCase() === preset.nickname.toLowerCase() && m.active
+      );
+      if (!found) {
+        await createMarker(userId, preset.nickname, preset.lat, preset.lng, 100);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to seed preset markers:", err);
+  }
+}

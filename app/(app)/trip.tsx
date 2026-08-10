@@ -9,6 +9,8 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as Location from "expo-location";
+import { reverseGeocode } from "../../lib/geocoding";
 import { useAuth } from "../../hooks/useAuth";
 import { useLocation } from "../../hooks/useLocation";
 import {
@@ -116,14 +118,56 @@ export default function TripScreen() {
         await startLocationTracking();
       }
 
-      const startLat = useCurrentLocation ? location!.coords.latitude : 0;
-      const startLng = useCurrentLocation ? location!.coords.longitude : 0;
+      let startLat = useCurrentLocation ? location!.coords.latitude : 0;
+      let startLng = useCurrentLocation ? location!.coords.longitude : 0;
+      let resolvedStartName = startName.trim();
 
-      if (!useCurrentLocation) {
-        Alert.alert(
-          "Start location required",
-          "Use current location or enable tracking first"
-        );
+      if (useCurrentLocation) {
+        if (!resolvedStartName) {
+          try {
+            resolvedStartName = await reverseGeocode(startLat, startLng);
+          } catch {
+            resolvedStartName = "Current Location";
+          }
+        }
+      } else {
+        if (!resolvedStartName) {
+          Alert.alert("Start location required", "Please specify a starting location or use current location");
+          setCreating(false);
+          return;
+        }
+        try {
+          const geocodedStart = await Location.geocodeAsync(resolvedStartName);
+          if (geocodedStart.length > 0) {
+            startLat = geocodedStart[0].latitude;
+            startLng = geocodedStart[0].longitude;
+          } else {
+            Alert.alert("Error", "Could not geocode start location");
+            setCreating(false);
+            return;
+          }
+        } catch (e) {
+          Alert.alert("Error", "Failed to resolve start location address");
+          setCreating(false);
+          return;
+        }
+      }
+
+      let endLat = 0;
+      let endLng = 0;
+      const resolvedEndName = endName.trim();
+      try {
+        const geocodedEnd = await Location.geocodeAsync(resolvedEndName);
+        if (geocodedEnd.length > 0) {
+          endLat = geocodedEnd[0].latitude;
+          endLng = geocodedEnd[0].longitude;
+        } else {
+          Alert.alert("Error", "Could not geocode destination location");
+          setCreating(false);
+          return;
+        }
+      } catch (e) {
+        Alert.alert("Error", "Failed to resolve destination location address");
         setCreating(false);
         return;
       }
@@ -131,10 +175,10 @@ export default function TripScreen() {
       const trip = await createTrip(
         startLat,
         startLng,
-        useCurrentLocation ? (startName.trim() || "Current Location") : startName.trim(),
-        startLat,
-        startLng,
-        endName.trim(),
+        resolvedStartName,
+        endLat,
+        endLng,
+        resolvedEndName,
         radius
       );
 

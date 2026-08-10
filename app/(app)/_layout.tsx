@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { View, TouchableOpacity, StyleSheet } from "react-native";
+import { View, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Tabs, usePathname, useRouter, Redirect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { registerForPushNotifications } from "../../services/notifications";
 import { startLocationTracking } from "../../services/location";
@@ -9,6 +10,9 @@ import { startTamperDetection } from "../../services/tamper";
 import { flushOfflineQueue } from "../../lib/offline-queue";
 import { useIncomingCall } from "../../hooks/useIncomingCall";
 import { IncomingCallOverlay } from "../../components/IncomingCallOverlay";
+import { seedPresetMarkers } from "../../services/markers";
+import { getPartner } from "../../services/pairing";
+import { supabase, isConfigured } from "../../services/supabase";
 import {
   Home,
   MapPin,
@@ -32,6 +36,7 @@ const TABS = [
 function FloatingTabBar() {
   const pathname = usePathname();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const getActiveTab = () => {
     for (const tab of TABS) {
@@ -45,7 +50,7 @@ function FloatingTabBar() {
   const active = getActiveTab();
 
   return (
-    <View style={tabStyles.container}>
+    <View style={[tabStyles.container, { bottom: Math.max(insets.bottom, 12) + 12 }]}>
       <View style={tabStyles.inner}>
         {TABS.map((tab) => {
           const isActive = active === tab.name;
@@ -77,7 +82,6 @@ function FloatingTabBar() {
 const tabStyles = StyleSheet.create({
   container: {
     position: "absolute",
-    bottom: 24,
     left: 20,
     right: 20,
     alignItems: "center",
@@ -111,11 +115,15 @@ export default function AppLayout() {
   const { user, loading } = useAuth();
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const { incomingCall, dismissIncomingCall } = useIncomingCall(user?.id);
+  const [pushEnabled, setPushEnabled] = useState(true);
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+  const [partnerName, setPartnerName] = useState<string | null>(null);
 
   useEffect(() => {
     isOnboardingComplete().then(setOnboardingDone);
   }, []);
 
+  // Fetch and seed presets, pair tracking
   useEffect(() => {
     if (!user) return;
     registerForPushNotifications(user.id);
@@ -126,7 +134,134 @@ export default function AppLayout() {
     });
     startTamperDetection();
     flushOfflineQueue();
+
+    if (user.email) {
+      seedPresetMarkers(user.id, user.email).catch((err) =>
+        console.error("Auto seeding preset markers failed:", err)
+      );
+    }
+
+    getPartner(user.id).then((p) => {
+      if (p) {
+        setPartnerId(p.id);
+        setPartnerName(p.name);
+      }
+    });
   }, [user]);
+
+  // Realtime push notifications configuration and listener
+  useEffect(() => {
+    if (!user || !isConfigured || !supabase) return;
+
+    // Fetch initial preference
+    supabase
+      .from("profiles")
+      .select("push_enabled")
+      .eq("id", user.id)
+      .single()
+      .then(({ data }) => {
+        if (data) setPushEnabled(data.push_enabled);
+      });
+
+    // Subscribe to preference updates
+    const profileChannel = supabase
+      .channel(`profile-updates-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.new && "push_enabled" in payload.new) {
+            setPushEnabled(payload.new.push_enabled);
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to location_feed updates for active trip to Xavier's
+    const feedChannel = supabase
+      .channel("feed-updates-global")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "location_feed",
+        },
+        async (payload) => {
+          const newFeed = payload.new;
+          if (!newFeed) return;
+
+          const isMe = newFeed.user_id === user.id;
+          const isPartner = newFeed.user_id === partnerId;
+
+          if (!isMe && !isPartner) return;
+
+          if (
+            newFeed.event_type !== "geofence_crossing" &&
+            newFeed.event_type !== "trip_arrival"
+          ) {
+            return;
+          }
+
+          // Check if active trip to Xavier's is set for traveler
+          const { data: activeTrips } = await supabase
+            .from("trips")
+            .select("end_name")
+            .eq("user_id", newFeed.user_id)
+            .eq("status", "active");
+
+          const hasXavierTrip = activeTrips?.some((t) =>
+            t.end_name.toLowerCase().includes("xavier")
+          );
+
+          if (!hasXavierTrip) return;
+
+          // Check if spot crossed is one of the four preset spots
+          const presetSpots = ["ruby", "college more", "biswa bangla", "xavier's", "xavier"];
+          const markerName = (newFeed.marker_nickname || "").toLowerCase();
+          const isPresetSpot = presetSpots.some((spot) => markerName.includes(spot));
+
+          if (!isPresetSpot && newFeed.event_type === "geofence_crossing") return;
+
+          // Get setting and notify accordingly
+          // Local/System notifications logic: If system notifications are OFF (push_enabled = false), show in-app alert
+          const profileRes = await supabase
+            .from("profiles")
+            .select("push_enabled")
+            .eq("id", user.id)
+            .single();
+
+          const currentPushEnabled = profileRes.data?.push_enabled ?? pushEnabled;
+
+          if (!currentPushEnabled) {
+            const travelerName = isMe ? "You" : (partnerName || "Partner");
+            let title = "SafeMark Alert";
+            let body = "";
+
+            if (newFeed.event_type === "geofence_crossing") {
+              title = "Spot Crossed";
+              body = `${travelerName} crossed ${newFeed.marker_nickname}`;
+            } else if (newFeed.event_type === "trip_arrival") {
+              title = "Trip Arrival";
+              body = `${travelerName} arrived at ${newFeed.marker_nickname}`;
+            }
+
+            Alert.alert(title, body);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(profileChannel);
+      supabase.removeChannel(feedChannel);
+    };
+  }, [user, partnerId, partnerName, pushEnabled]);
 
   if (loading || onboardingDone === null) return null;
   if (!onboardingDone) return <Redirect href="/onboarding" />;
