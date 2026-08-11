@@ -52,6 +52,23 @@ function getTripDuration(started: string, completed: string): string {
   return `${hrs}h ${mins % 60}m`;
 }
 
+const PRESET_COORDINATES: Record<string, { lat: number; lng: number; address: string }> = {
+  "ruby": { lat: 22.5134, lng: 88.4026, address: "Ruby Crossing, EM Bypass, Kasba, Kolkata" },
+  "college more": { lat: 22.5735, lng: 88.4331, address: "College More Crossing, Sector V, Salt Lake, Kolkata" },
+  "biswa bangla": { lat: 22.5791, lng: 88.4611, address: "Biswa Bangla Gate, Major Arterial Road, Newtown, Kolkata" },
+  "xavier": { lat: 22.5976, lng: 88.4984, address: "St. Xavier's University Kolkata, Action Area III, Newtown, Kolkata" },
+};
+
+function resolvePresetCoordinates(name: string): { lat: number; lng: number; address: string } | null {
+  const norm = name.toLowerCase().trim();
+  for (const [key, val] of Object.entries(PRESET_COORDINATES)) {
+    if (norm.includes(key) || key.includes(norm)) {
+      return val;
+    }
+  }
+  return null;
+}
+
 export default function TripScreen() {
   const { user } = useAuth();
   const { location } = useLocation();
@@ -136,40 +153,64 @@ export default function TripScreen() {
           setCreating(false);
           return;
         }
-        try {
-          const geocodedStart = await Location.geocodeAsync(resolvedStartName);
-          if (geocodedStart.length > 0) {
-            startLat = geocodedStart[0].latitude;
-            startLng = geocodedStart[0].longitude;
-          } else {
-            Alert.alert("Error", "Could not geocode start location");
+
+        const presetStart = resolvePresetCoordinates(resolvedStartName);
+        if (presetStart) {
+          startLat = presetStart.lat;
+          startLng = presetStart.lng;
+          resolvedStartName = presetStart.address;
+        } else {
+          try {
+            const geocodedStart = await Location.geocodeAsync(resolvedStartName);
+            if (geocodedStart.length > 0) {
+              startLat = geocodedStart[0].latitude;
+              startLng = geocodedStart[0].longitude;
+              // Reverse geocode to get a proper full address
+              try {
+                resolvedStartName = await reverseGeocode(startLat, startLng);
+              } catch {}
+            } else {
+              Alert.alert("Error", "Could not geocode start location");
+              setCreating(false);
+              return;
+            }
+          } catch (e) {
+            Alert.alert("Error", "Failed to resolve start location address");
             setCreating(false);
             return;
           }
-        } catch (e) {
-          Alert.alert("Error", "Failed to resolve start location address");
-          setCreating(false);
-          return;
         }
       }
 
       let endLat = 0;
       let endLng = 0;
-      const resolvedEndName = endName.trim();
-      try {
-        const geocodedEnd = await Location.geocodeAsync(resolvedEndName);
-        if (geocodedEnd.length > 0) {
-          endLat = geocodedEnd[0].latitude;
-          endLng = geocodedEnd[0].longitude;
-        } else {
-          Alert.alert("Error", "Could not geocode destination location");
+      let resolvedEndName = endName.trim();
+
+      const presetEnd = resolvePresetCoordinates(resolvedEndName);
+      if (presetEnd) {
+        endLat = presetEnd.lat;
+        endLng = presetEnd.lng;
+        resolvedEndName = presetEnd.address;
+      } else {
+        try {
+          const geocodedEnd = await Location.geocodeAsync(resolvedEndName);
+          if (geocodedEnd.length > 0) {
+            endLat = geocodedEnd[0].latitude;
+            endLng = geocodedEnd[0].longitude;
+            // Reverse geocode to get a proper full address
+            try {
+              resolvedEndName = await reverseGeocode(endLat, endLng);
+            } catch {}
+          } else {
+            Alert.alert("Error", "Could not geocode destination location");
+            setCreating(false);
+            return;
+          }
+        } catch (e) {
+          Alert.alert("Error", "Failed to resolve destination location address");
           setCreating(false);
           return;
         }
-      } catch (e) {
-        Alert.alert("Error", "Failed to resolve destination location address");
-        setCreating(false);
-        return;
       }
 
       const trip = await createTrip(
@@ -261,10 +302,6 @@ export default function TripScreen() {
                   <Text className="text-white text-sm flex-1">
                     {activeTrip.start_name}
                   </Text>
-                  <Text className="text-muted text-xs">
-                    {activeTrip.start_lat.toFixed(4)},{" "}
-                    {activeTrip.start_lng.toFixed(4)}
-                  </Text>
                 </View>
 
                 <View className="ml-3 w-px h-4 bg-muted/30" />
@@ -275,10 +312,6 @@ export default function TripScreen() {
                   </View>
                   <Text className="text-white text-sm flex-1">
                     {activeTrip.end_name}
-                  </Text>
-                  <Text className="text-muted text-xs">
-                    {activeTrip.end_lat.toFixed(4)},{" "}
-                    {activeTrip.end_lng.toFixed(4)}
                   </Text>
                 </View>
               </View>

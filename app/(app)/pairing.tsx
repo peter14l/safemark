@@ -80,10 +80,10 @@ export default function PairingScreen() {
 
   const handleShareLink = async () => {
     if (!inviteCode) return;
-    const link = `safemark://pair?code=${inviteCode}`;
+    const link = `https://zcxawvjqbaqvwzcumbml.supabase.co/functions/v1/pair-redirect?code=${inviteCode}`;
     await Share.share({
       message: `Join me on SafeMark — tap this link to pair with me:\n${link}`,
-      url: link, // iOS shows this as a tappable URL
+      url: link,
     });
   };
 
