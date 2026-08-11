@@ -141,10 +141,26 @@ export default function AppLayout() {
       );
     }
 
+    // Attempt standard pairing first
     getPartner(user.id).then((p) => {
       if (p) {
         setPartnerId(p.id);
         setPartnerName(p.name);
+      } else if (user.email && isConfigured && supabase) {
+        // Fallback: direct email lookup for target users even if unpaired
+        const email = user.email.toLowerCase();
+        const targetEmails = ["baban012008@gmail.com", "petoorpoorkor20@gmail.com"];
+        if (targetEmails.includes(email)) {
+          const otherEmail = email === "baban012008@gmail.com" ? "petoorpoorkor20@gmail.com" : "baban012008@gmail.com";
+          supabase.rpc("get_user_id_by_email", { p_email: otherEmail }).then(({ data: partnerUuid }) => {
+            if (partnerUuid) {
+              setPartnerId(partnerUuid);
+              supabase.from("profiles").select("display_name").eq("id", partnerUuid).single().then(({ data: prof }) => {
+                if (prof) setPartnerName(prof.display_name);
+              });
+            }
+          });
+        }
       }
     });
   }, [user]);
@@ -182,7 +198,7 @@ export default function AppLayout() {
       )
       .subscribe();
 
-    // Subscribe to location_feed updates for active trip to Xavier's
+    // Subscribe to location_feed updates
     const feedChannel = supabase
       .channel("feed-updates-global")
       .on(
@@ -207,19 +223,6 @@ export default function AppLayout() {
           ) {
             return;
           }
-
-          // Check if active trip to Xavier's is set for traveler
-          const { data: activeTrips } = await supabase
-            .from("trips")
-            .select("end_name")
-            .eq("user_id", newFeed.user_id)
-            .eq("status", "active");
-
-          const hasXavierTrip = activeTrips?.some((t) =>
-            t.end_name.toLowerCase().includes("xavier")
-          );
-
-          if (!hasXavierTrip) return;
 
           // Check if spot crossed is one of the four preset spots
           const presetSpots = ["ruby", "college more", "biswa bangla", "xavier's", "xavier"];

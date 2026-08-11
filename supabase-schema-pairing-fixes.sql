@@ -26,3 +26,14 @@ DROP POLICY IF EXISTS "Valid invite codes are readable" ON public.invite_codes;
 CREATE POLICY "Anyone can read invite codes" ON public.invite_codes
   FOR SELECT
   USING (true);
+
+-- 4. Create RPC to lookup user UUID by email (for target email direct linking fallback)
+CREATE OR REPLACE FUNCTION public.get_user_id_by_email(p_email TEXT)
+RETURNS UUID
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN (SELECT id FROM auth.users WHERE LOWER(email) = LOWER(p_email) LIMIT 1);
+END;
+$$;
+

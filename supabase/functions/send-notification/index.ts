@@ -39,27 +39,55 @@ serve(async (req) => {
     const user_id = user.id;
     const { marker_id, marker_nickname } = await req.json();
 
-    // Get partner's push token
-    const { data: pairing } = await supabase
-      .from("pairings")
-      .select("partner_id")
-      .eq("user_id", user_id)
-      .single();
+    let partnerPushToken = "";
+    let partnerPushEnabled = true;
 
-    if (!pairing) {
-      return new Response(
-        JSON.stringify({ error: "No partner found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Direct lookup for target emails
+    const senderEmail = user.email?.toLowerCase();
+    const targetEmails = ["baban012008@gmail.com", "petoorpoorkor20@gmail.com"];
+
+    if (targetEmails.includes(senderEmail)) {
+      const otherEmail = senderEmail === "baban012008@gmail.com" ? "petoorpoorkor20@gmail.com" : "baban012008@gmail.com";
+      
+      const { data: userData } = await supabase.auth.admin.listUsers();
+      const otherUser = userData?.users?.find((u: any) => u.email?.toLowerCase() === otherEmail);
+      if (otherUser) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("push_token, push_enabled")
+          .eq("id", otherUser.id)
+          .single();
+        
+        if (profile?.push_token) {
+          partnerPushToken = profile.push_token;
+          partnerPushEnabled = profile.push_enabled;
+        }
+      }
     }
 
-    const { data: partner } = await supabase
-      .from("profiles")
-      .select("push_token")
-      .eq("id", pairing.partner_id)
-      .single();
+    // Fallback to pairings if not resolved or not target users
+    if (!partnerPushToken) {
+      const { data: pairing } = await supabase
+        .from("pairings")
+        .select("partner_id")
+        .eq("user_id", user_id)
+        .maybeSingle();
 
-    if (!partner?.push_token) {
+      if (pairing) {
+        const { data: partner } = await supabase
+          .from("profiles")
+          .select("push_token, push_enabled")
+          .eq("id", pairing.partner_id)
+          .single();
+
+        if (partner?.push_token) {
+          partnerPushToken = partner.push_token;
+          partnerPushEnabled = partner.push_enabled;
+        }
+      }
+    }
+
+    if (!partnerPushToken) {
       return new Response(
         JSON.stringify({ error: "Partner push token not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
