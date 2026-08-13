@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, TouchableOpacity, StyleSheet, Alert, Text } from "react-native";
 import { Tabs, usePathname, useRouter, Redirect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
@@ -61,14 +61,19 @@ function FloatingTabBar() {
               activeOpacity={0.7}
               style={[
                 tabStyles.tab,
-                isActive && tabStyles.activeTab,
+                isActive ? tabStyles.activeTab : tabStyles.inactiveTab,
               ]}
             >
               <Icon
-                size={20}
+                size={18}
                 color={isActive ? "#FFFFFF" : "#555570"}
-                strokeWidth={isActive ? 2 : 1.6}
+                strokeWidth={isActive ? 2.2 : 1.6}
               />
+              {isActive && (
+                <Text style={tabStyles.tabLabel} numberOfLines={1}>
+                  {tab.label}
+                </Text>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -80,32 +85,43 @@ function FloatingTabBar() {
 const tabStyles = StyleSheet.create({
   container: {
     position: "absolute",
-    left: 20,
-    right: 20,
+    left: 16,
+    right: 16,
     alignItems: "center",
   },
   inner: {
     flexDirection: "row",
     backgroundColor: "#1A1A2E",
-    borderRadius: 20,
-    paddingHorizontal: 6,
+    borderRadius: 22,
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    gap: 4,
+    gap: 6,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 12,
+    alignItems: "center",
   },
   tab: {
-    width: 52,
     height: 42,
-    borderRadius: 14,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+  },
+  inactiveTab: {
+    width: 44,
   },
   activeTab: {
     backgroundColor: "#6C63FF",
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  tabLabel: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });
 

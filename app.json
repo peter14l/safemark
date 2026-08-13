@@ -2,7 +2,7 @@
   "expo": {
     "name": "Calc",
     "slug": "safemark",
-    "version": "1.5.2",
+    "version": "1.5.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
