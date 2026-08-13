@@ -28,6 +28,16 @@ export async function signOut() {
 
 export async function getCurrentUser() {
   if (!isConfigured || !supabase) return null;
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) return session.user;
+  } catch (e) {
+    console.error("Failed to retrieve session locally:", e);
+  }
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user;
+  } catch {
+    return null;
+  }
 }

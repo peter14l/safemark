@@ -85,6 +85,11 @@ export default function TripScreen() {
   const [useCurrentLocation] = useState(true);
   const [startTime, setStartTime] = useState("");
 
+  const [startSuggestions, setStartSuggestions] = useState<any[]>([]);
+  const [endSuggestions, setEndSuggestions] = useState<any[]>([]);
+  const [selectedStartCoords, setSelectedStartCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedEndCoords, setSelectedEndCoords] = useState<{ lat: number; lng: number } | null>(null);
+
   const loadActiveTrip = async () => {
     const trip = await getActiveTrip();
     setActiveTrip(trip);
@@ -108,23 +113,70 @@ export default function TripScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTrip?.id]);
 
+  // Load current location address on mount
+  useEffect(() => {
+    if (location && !startName && !selectedStartCoords) {
+      const lat = location.coords.latitude;
+      const lng = location.coords.longitude;
+      setSelectedStartCoords({ lat, lng });
+      reverseGeocode(lat, lng).then((addr) => {
+        setStartName(addr);
+      }).catch(() => {
+        setStartName("Current Location");
+      });
+    }
+  }, [location]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadActiveTrip();
     setRefreshing(false);
   };
 
-  const handleCreateTrip = async () => {
-    if (!endName.trim()) {
-      Alert.alert("Missing destination", "Enter a destination name");
+  const fetchSuggestions = async (query: string, type: "start" | "end") => {
+    if (query.trim().length < 3) {
+      if (type === "start") setStartSuggestions([]);
+      else setEndSuggestions([]);
       return;
     }
 
-    if (!location && useCurrentLocation) {
-      Alert.alert(
-        "No location",
-        "Enable tracking or turn off 'Use current location'"
-      );
+    try {
+      const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5`);
+      const data = await res.json();
+      const items = data.features.map((f: any) => {
+        const name = f.properties.name || "";
+        const city = f.properties.city || "";
+        const state = f.properties.state || "";
+        const country = f.properties.country || "";
+        const fullAddress = [name, city, state, country].filter(Boolean).join(", ");
+        return {
+          label: fullAddress,
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0],
+        };
+      });
+      if (type === "start") setStartSuggestions(items);
+      else setEndSuggestions(items);
+    } catch (e) {
+      console.error("[Autocomplete error]", e);
+    }
+  };
+
+  const handleStartNameChange = (text: string) => {
+    setStartName(text);
+    setSelectedStartCoords(null);
+    fetchSuggestions(text, "start");
+  };
+
+  const handleEndNameChange = (text: string) => {
+    setEndName(text);
+    setSelectedEndCoords(null);
+    fetchSuggestions(text, "end");
+  };
+
+  const handleCreateTrip = async () => {
+    if (!endName.trim()) {
+      Alert.alert("Missing destination", "Enter a destination name");
       return;
     }
 
@@ -135,25 +187,15 @@ export default function TripScreen() {
         await startLocationTracking();
       }
 
-      let startLat = useCurrentLocation ? location!.coords.latitude : 0;
-      let startLng = useCurrentLocation ? location!.coords.longitude : 0;
+      // 1. Resolve Start Coordinates
+      let startLat = 0;
+      let startLng = 0;
       let resolvedStartName = startName.trim();
 
-      if (useCurrentLocation) {
-        if (!resolvedStartName) {
-          try {
-            resolvedStartName = await reverseGeocode(startLat, startLng);
-          } catch {
-            resolvedStartName = "Current Location";
-          }
-        }
+      if (selectedStartCoords) {
+        startLat = selectedStartCoords.lat;
+        startLng = selectedStartCoords.lng;
       } else {
-        if (!resolvedStartName) {
-          Alert.alert("Start location required", "Please specify a starting location or use current location");
-          setCreating(false);
-          return;
-        }
-
         const presetStart = resolvePresetCoordinates(resolvedStartName);
         if (presetStart) {
           startLat = presetStart.lat;
@@ -165,51 +207,55 @@ export default function TripScreen() {
             if (geocodedStart.length > 0) {
               startLat = geocodedStart[0].latitude;
               startLng = geocodedStart[0].longitude;
-              // Reverse geocode to get a proper full address
               try {
                 resolvedStartName = await reverseGeocode(startLat, startLng);
               } catch {}
             } else {
-              Alert.alert("Error", "Could not geocode start location");
+              Alert.alert("Error", `Could not find start location: "${resolvedStartName}"`);
               setCreating(false);
               return;
             }
           } catch (e) {
-            Alert.alert("Error", "Failed to resolve start location address");
+            Alert.alert("Error", `Failed to resolve start location: "${resolvedStartName}"`);
             setCreating(false);
             return;
           }
         }
       }
 
+      // 2. Resolve End Coordinates
       let endLat = 0;
       let endLng = 0;
       let resolvedEndName = endName.trim();
 
-      const presetEnd = resolvePresetCoordinates(resolvedEndName);
-      if (presetEnd) {
-        endLat = presetEnd.lat;
-        endLng = presetEnd.lng;
-        resolvedEndName = presetEnd.address;
+      if (selectedEndCoords) {
+        endLat = selectedEndCoords.lat;
+        endLng = selectedEndCoords.lng;
       } else {
-        try {
-          const geocodedEnd = await Location.geocodeAsync(resolvedEndName);
-          if (geocodedEnd.length > 0) {
-            endLat = geocodedEnd[0].latitude;
-            endLng = geocodedEnd[0].longitude;
-            // Reverse geocode to get a proper full address
-            try {
-              resolvedEndName = await reverseGeocode(endLat, endLng);
-            } catch {}
-          } else {
-            Alert.alert("Error", "Could not geocode destination location");
+        const presetEnd = resolvePresetCoordinates(resolvedEndName);
+        if (presetEnd) {
+          endLat = presetEnd.lat;
+          endLng = presetEnd.lng;
+          resolvedEndName = presetEnd.address;
+        } else {
+          try {
+            const geocodedEnd = await Location.geocodeAsync(resolvedEndName);
+            if (geocodedEnd.length > 0) {
+              endLat = geocodedEnd[0].latitude;
+              endLng = geocodedEnd[0].longitude;
+              try {
+                resolvedEndName = await reverseGeocode(endLat, endLng);
+              } catch {}
+            } else {
+              Alert.alert("Error", `Could not find destination: "${resolvedEndName}"`);
+              setCreating(false);
+              return;
+            }
+          } catch (e) {
+            Alert.alert("Error", `Failed to resolve destination: "${resolvedEndName}"`);
             setCreating(false);
             return;
           }
-        } catch (e) {
-          Alert.alert("Error", "Failed to resolve destination location address");
-          setCreating(false);
-          return;
         }
       }
 
@@ -227,10 +273,12 @@ export default function TripScreen() {
         setActiveTrip(trip);
         setStartName("");
         setEndName("");
+        setSelectedStartCoords(null);
+        setSelectedEndCoords(null);
         Alert.alert("Trip started", `Tracking to ${trip.end_name}`);
-      } else {
-        Alert.alert("Error", "Could not create trip");
       }
+    } catch (dbErr: any) {
+      Alert.alert("Database Error", dbErr.message || "Could not create trip. Verify your Supabase policies.");
     } finally {
       setCreating(false);
     }
@@ -252,6 +300,34 @@ export default function TripScreen() {
     ]);
   };
 
+  const renderSuggestions = (suggestions: any[], type: "start" | "end") => {
+    if (suggestions.length === 0) return null;
+    return (
+      <View className="absolute left-0 right-0 top-full bg-bg-card border border-bg-elevated rounded-xl mt-1 overflow-hidden z-50 shadow-2xl">
+        {suggestions.map((item, idx) => (
+          <TouchableOpacity
+            key={idx}
+            onPress={() => {
+              if (type === "start") {
+                setStartName(item.label);
+                setSelectedStartCoords({ lat: item.lat, lng: item.lng });
+                setStartSuggestions([]);
+              } else {
+                setEndName(item.label);
+                setSelectedEndCoords({ lat: item.lat, lng: item.lng });
+                setEndSuggestions([]);
+              }
+            }}
+            activeOpacity={0.7}
+            className="px-4 py-3.5 border-b border-bg-elevated/40 active:bg-bg-elevated"
+          >
+            <Text className="text-white text-xs font-medium" numberOfLines={2}>{item.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   if (loading) {
     return (
       <SafeAreaView className="flex-1 bg-bg items-center justify-center">
@@ -265,6 +341,7 @@ export default function TripScreen() {
       <ScrollView
         className="flex-1 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: 100 }}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -350,43 +427,42 @@ export default function TripScreen() {
                 Route
               </Text>
 
-              <View className="mb-3">
+              <View className="mb-3" style={{ zIndex: 20 }}>
                 <View className="flex-row items-center gap-2 mb-2">
                   <View className="w-5 h-5 rounded-full bg-success/15 items-center justify-center">
                     <CircleDot size={10} color="#00C853" />
                   </View>
                   <Text className="text-white text-sm font-medium">From</Text>
                 </View>
-                <TextInput
-                  value={startName}
-                  onChangeText={setStartName}
-                  placeholder="Current Location"
-                  placeholderTextColor="#555570"
-                  className="bg-bg rounded-xl px-4 py-3 text-white text-sm"
-                />
-                {useCurrentLocation && location && (
-                  <Text className="text-muted text-xs mt-1 ml-7">
-                    Using current location:{" "}
-                    {location.coords.latitude.toFixed(4)},{" "}
-                    {location.coords.longitude.toFixed(4)}
-                  </Text>
-                )}
+                <View className="relative">
+                  <TextInput
+                    value={startName}
+                    onChangeText={handleStartNameChange}
+                    placeholder="Current Location"
+                    placeholderTextColor="#555570"
+                    className="bg-bg rounded-xl px-4 py-3 text-white text-sm"
+                  />
+                  {renderSuggestions(startSuggestions, "start")}
+                </View>
               </View>
 
-              <View className="mb-4">
+              <View className="mb-4" style={{ zIndex: 10 }}>
                 <View className="flex-row items-center gap-2 mb-2">
                   <View className="w-5 h-5 rounded-full bg-danger/15 items-center justify-center">
                     <Flag size={10} color="#FF5252" />
                   </View>
                   <Text className="text-white text-sm font-medium">To</Text>
                 </View>
-                <TextInput
-                  value={endName}
-                  onChangeText={setEndName}
-                  placeholder="e.g. Dance Class"
-                  placeholderTextColor="#555570"
-                  className="bg-bg rounded-xl px-4 py-3 text-white text-sm"
-                />
+                <View className="relative">
+                  <TextInput
+                    value={endName}
+                    onChangeText={handleEndNameChange}
+                    placeholder="e.g. Dance Class"
+                    placeholderTextColor="#555570"
+                    className="bg-bg rounded-xl px-4 py-3 text-white text-sm"
+                  />
+                  {renderSuggestions(endSuggestions, "end")}
+                </View>
               </View>
 
               <Text className="text-muted text-xs uppercase tracking-wider mb-2">

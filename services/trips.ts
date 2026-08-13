@@ -29,11 +29,11 @@ export async function createTrip(
   endLng: number,
   endName: string,
   arrivalRadius: number = 50
-): Promise<Trip | null> {
-  if (!isConfigured || !supabase) return null;
+): Promise<Trip> {
+  if (!isConfigured || !supabase) throw new Error("Supabase is not configured");
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) throw new Error("No authenticated user session found");
 
   const { data, error } = await supabase
     .from("trips")
@@ -53,16 +53,20 @@ export async function createTrip(
 
   if (error || !data) {
     console.error("Create trip error:", error);
-    return null;
+    throw new Error(error?.message || "Failed to create trip row in database");
   }
 
-  await supabase.from("trip_events").insert({
+  const { error: eventError } = await supabase.from("trip_events").insert({
     trip_id: data.id,
     user_id: user.id,
     event_type: "started",
     latitude: startLat,
     longitude: startLng,
   });
+
+  if (eventError) {
+    console.error("Create trip event error:", eventError);
+  }
 
   await setActiveTripId(data.id);
   return data as Trip;
