@@ -1,6 +1,6 @@
 {
   "name": "safemark",
-  "version": "1.5.3",
+  "version": "1.6.1",
   "main": "expo-router/entry",
   "private": true,
   "scripts": {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -107,6 +107,89 @@ export default function TripScreen() {
   const [manualLat, setManualLat] = useState("");
   const [manualLng, setManualLng] = useState("");
 
+  // Travel estimates states (Final destination and checkpoints ETAs)
+  const [destinationEta, setDestinationEta] = useState<{ distanceKm: number; durationMins: number } | null>(null);
+  const [markersEtas, setMarkersEtas] = useState<Record<string, { distanceKm: number; durationMins: number }>>({});
+
+  const lastEtaLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastEtaTimeRef = useRef<number>(0);
+
+  const getDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3; // metres
+    const phi1 = lat1 * Math.PI/180;
+    const phi2 = lat2 * Math.PI/180;
+    const deltaPhi = (lat2-lat1) * Math.PI/180;
+    const deltaLambda = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) +
+              Math.cos(phi1) * Math.cos(phi2) *
+              Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c;
+  };
+
+  const calculateEtas = async (currentLat: number, currentLng: number, targetTrip = activeTrip) => {
+    if (!targetTrip) return;
+
+    const now = Date.now();
+    // 1. Throttle: Limit API requests to once every 45 seconds to preserve battery
+    if (now - lastEtaTimeRef.current < 45000) {
+      return;
+    }
+
+    // 2. Distance check: Skip requests if user has moved less than 100 meters since last update
+    if (lastEtaLocationRef.current) {
+      const movedDistance = getDistanceMeters(
+        lastEtaLocationRef.current.lat,
+        lastEtaLocationRef.current.lng,
+        currentLat,
+        currentLng
+      );
+      if (movedDistance < 100) {
+        return;
+      }
+    }
+
+    try {
+      // 1. Calculate for final destination
+      const destRes = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${currentLng},${currentLat};${targetTrip.end_lng},${targetTrip.end_lat}?overview=false`
+      );
+      const destData = await destRes.json();
+      if (destData.routes && destData.routes.length > 0) {
+        const route = destData.routes[0];
+        setDestinationEta({
+          distanceKm: route.distance / 1000,
+          durationMins: Math.round(route.duration / 60),
+        });
+      }
+
+      // 2. Calculate for each marker/checkpoint
+      const newEtas: Record<string, { distanceKm: number; durationMins: number }> = {};
+      for (const marker of markers) {
+        const markerRes = await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${currentLng},${currentLat};${marker.longitude},${marker.latitude}?overview=false`
+        );
+        const markerData = await markerRes.json();
+        if (markerData.routes && markerData.routes.length > 0) {
+          const route = markerData.routes[0];
+          newEtas[marker.id] = {
+            distanceKm: route.distance / 1000,
+            durationMins: Math.round(route.duration / 60),
+          };
+        }
+      }
+      setMarkersEtas(newEtas);
+      
+      // Update refs on successful calculation
+      lastEtaLocationRef.current = { lat: currentLat, lng: currentLng };
+      lastEtaTimeRef.current = now;
+    } catch (e) {
+      console.error("[ETA calculation error]", e);
+    }
+  };
+
   const handleAddCheckpoint = async () => {
     if (!checkpointName.trim()) {
       Alert.alert("Error", "Enter a nickname");
@@ -172,6 +255,9 @@ export default function TripScreen() {
     }
     const history = await getTripHistory(user?.id || "");
     setTripHistory(history);
+    if (trip && location) {
+      calculateEtas(location.coords.latitude, location.coords.longitude, trip);
+    }
   };
 
   useEffect(() => {
@@ -186,6 +272,13 @@ export default function TripScreen() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTrip?.id]);
+
+  // Recalculate ETAs periodically when location changes
+  useEffect(() => {
+    if (activeTrip && location) {
+      calculateEtas(location.coords.latitude, location.coords.longitude);
+    }
+  }, [activeTrip?.id, location?.coords.latitude, location?.coords.longitude, markers.length]);
 
   // Load current location address on mount
   useEffect(() => {
@@ -474,6 +567,32 @@ export default function TripScreen() {
                 </Text>
               </View>
 
+              {destinationEta && (
+                <View className="bg-bg rounded-xl p-4 gap-2 mt-3 border border-bg-elevated/40">
+                  <Text className="text-white text-xs font-semibold uppercase tracking-wider">
+                    Driving Estimates (Car)
+                  </Text>
+                  <View className="flex-row justify-between items-center mt-1">
+                    <Text className="text-muted text-xs">Remaining Distance</Text>
+                    <Text className="text-white text-xs font-medium">
+                      {destinationEta.distanceKm.toFixed(1)} km
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-muted text-xs">Driving Time</Text>
+                    <Text className="text-accent text-xs font-semibold">
+                      ~{destinationEta.durationMins} mins
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-muted text-xs">Estimated Arrival (ETA)</Text>
+                    <Text className="text-white text-xs font-medium">
+                      {new Date(Date.now() + destinationEta.durationMins * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               <TouchableOpacity
                 onPress={handleCancelTrip}
                 activeOpacity={0.7}
@@ -709,6 +828,7 @@ export default function TripScreen() {
                   key={marker.id}
                   marker={marker}
                   onDelete={removeMarker}
+                  eta={activeTrip ? markersEtas[marker.id] : null}
                 />
               ))}
             </View>

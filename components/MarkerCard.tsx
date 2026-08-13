@@ -7,9 +7,10 @@ interface MarkerCardProps {
   marker: Marker;
   onPress?: () => void;
   onDelete?: () => void;
+  eta?: { distanceKm: number; durationMins: number } | null;
 }
 
-export function MarkerCard({ marker, onPress, onDelete }: MarkerCardProps) {
+export function MarkerCard({ marker, onPress, onDelete, eta }: MarkerCardProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -28,7 +29,7 @@ export function MarkerCard({ marker, onPress, onDelete }: MarkerCardProps) {
               {marker.nickname}
             </Text>
             <Text className="text-muted text-sm">
-              {marker.radius_meters}m radius
+              {marker.radius_meters}m radius{eta && ` · ${eta.distanceKm.toFixed(1)} km (~${eta.durationMins} mins)`}
             </Text>
           </View>
         </View>
