@@ -158,11 +158,6 @@ export default function CallScreen() {
       stopAudioSession();
       stopRingtone();
       stopRingback();
-      if (user) {
-        endCall(user.id).catch((err) =>
-          console.error("Error releasing call resources on unmount:", err)
-        );
-      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
