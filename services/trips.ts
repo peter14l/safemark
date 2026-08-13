@@ -30,7 +30,11 @@ export async function createTrip(
   endName: string,
   arrivalRadius: number = 50
 ): Promise<Trip> {
-  if (!isConfigured || !supabase) throw new Error("Supabase is not configured");
+  if (!isConfigured || !supabase) {
+    throw new Error(
+      `Supabase is not configured (URL: ${process.env.EXPO_PUBLIC_SUPABASE_URL ? "Found" : "Not Found"}, Key: ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? "Found" : "Not Found"}). Try restarting your Expo developer server with 'npx expo start -c' to clear the bundler cache.`
+    );
+  }
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("No authenticated user session found");
