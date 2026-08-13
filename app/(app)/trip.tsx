@@ -7,12 +7,17 @@ import {
   ScrollView,
   Alert,
   RefreshControl,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import { reverseGeocode } from "../../lib/geocoding";
 import { useAuth } from "../../hooks/useAuth";
 import { useLocation } from "../../hooks/useLocation";
+import { useMarkers } from "../../hooks/useMarkers";
+import { MarkerCard } from "../../components/MarkerCard";
+import { MARKER_RADII, DEFAULT_RADIUS } from "../../lib/constants";
 import {
   createTrip,
   getActiveTrip,
@@ -22,7 +27,9 @@ import {
 } from "../../services/trips";
 import { startLocationTracking, isTracking } from "../../services/location";
 import { TRIP_ARRIVAL_DEFAULT_RADIUS, TRIP_RADIUS_OPTIONS } from "../../lib/constants";
-import { Flag, MapPin, Navigation, X, CircleDot, Clock, CheckCircle, History } from "lucide-react-native";
+import { Flag, MapPin, Navigation, X, CircleDot, Clock, CheckCircle, History, Plus, Crosshair, Map } from "lucide-react-native";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 function getTimeElapsed(startedAt: string): string {
   const diff = Date.now() - new Date(startedAt).getTime();
@@ -89,6 +96,73 @@ export default function TripScreen() {
   const [endSuggestions, setEndSuggestions] = useState<any[]>([]);
   const [selectedStartCoords, setSelectedStartCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedEndCoords, setSelectedEndCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Checkpoints management states
+  const { markers, add: addMarker, remove: removeMarker } = useMarkers(user?.id);
+  const [showAddCheckpoint, setShowAddCheckpoint] = useState(false);
+  const [checkpointName, setCheckpointName] = useState("");
+  const [checkpointRadius, setCheckpointRadius] = useState(DEFAULT_RADIUS);
+  const [selectedCheckpointCoords, setSelectedCheckpointCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [useMapPick, setUseMapPick] = useState(false);
+  const [manualLat, setManualLat] = useState("");
+  const [manualLng, setManualLng] = useState("");
+
+  const handleAddCheckpoint = async () => {
+    if (!checkpointName.trim()) {
+      Alert.alert("Error", "Enter a nickname");
+      return;
+    }
+
+    const lat = selectedCheckpointCoords?.lat ?? location?.coords.latitude;
+    const lng = selectedCheckpointCoords?.lng ?? location?.coords.longitude;
+
+    if (!lat || !lng) {
+      Alert.alert("Error", "Pick a location on the map or wait for GPS");
+      return;
+    }
+
+    try {
+      await addMarker(checkpointName.trim(), lat, lng, checkpointRadius);
+      setShowAddCheckpoint(false);
+      setCheckpointName("");
+      setCheckpointRadius(DEFAULT_RADIUS);
+      setSelectedCheckpointCoords(null);
+      setUseMapPick(false);
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    }
+  };
+
+  const openAddCheckpointModal = () => {
+    setSelectedCheckpointCoords(null);
+    setUseMapPick(false);
+    setManualLat("");
+    setManualLng("");
+    setShowAddCheckpoint(true);
+  };
+
+  const useCurrentLocationCheckpoint = () => {
+    if (!location) {
+      Alert.alert("Error", "GPS not available yet");
+      return;
+    }
+    setSelectedCheckpointCoords({
+      lat: location.coords.latitude,
+      lng: location.coords.longitude,
+    });
+    setManualLat(location.coords.latitude.toFixed(6));
+    setManualLng(location.coords.longitude.toFixed(6));
+  };
+
+  const applyManualCheckpointCoords = () => {
+    const lat = parseFloat(manualLat);
+    const lng = parseFloat(manualLng);
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      Alert.alert("Error", "Enter valid coordinates (lat -90..90, lng -180..180)");
+      return;
+    }
+    setSelectedCheckpointCoords({ lat, lng });
+  };
 
   const loadActiveTrip = async () => {
     const trip = await getActiveTrip();
@@ -602,7 +676,171 @@ export default function TripScreen() {
               ))}
           </View>
         )}
+
+        {/* Checkpoints Section */}
+        <View className="mt-6 mb-4">
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-row items-center gap-2">
+              <MapPin size={16} color="#8888AA" />
+              <Text className="text-white text-base font-semibold">
+                Journey Checkpoints
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={openAddCheckpointModal}
+              activeOpacity={0.7}
+              className="flex-row items-center gap-1 bg-accent/15 px-3 py-1.5 rounded-lg"
+            >
+              <Plus size={14} color="#6C63FF" />
+              <Text className="text-accent text-xs font-semibold">Add Checkpoint</Text>
+            </TouchableOpacity>
+          </View>
+
+          {markers.length === 0 ? (
+            <View className="bg-bg-card rounded-2xl p-6 items-center">
+              <Text className="text-muted text-center text-sm leading-5">
+                No checkpoints set yet.{"\n"}Set checkpoints (e.g. Ruby) to get notified when you cross them.
+              </Text>
+            </View>
+          ) : (
+            <View className="gap-2">
+              {markers.map((marker) => (
+                <MarkerCard
+                  key={marker.id}
+                  marker={marker}
+                  onDelete={removeMarker}
+                />
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
+
+      {/* Add Checkpoint Modal */}
+      <Modal
+        visible={showAddCheckpoint}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowAddCheckpoint(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-end">
+          <View className="bg-bg-card rounded-t-3xl p-6" style={{ maxHeight: SCREEN_HEIGHT * 0.85 }}>
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-white text-lg font-bold">Add Checkpoint</Text>
+              <TouchableOpacity
+                onPress={() => setShowAddCheckpoint(false)}
+                className="w-8 h-8 rounded-full bg-bg-elevated items-center justify-center"
+              >
+                <X size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView className="space-y-4" keyboardShouldPersistTaps="handled">
+              <View className="gap-2">
+                <Text className="text-white text-sm font-medium">Nickname</Text>
+                <TextInput
+                  value={checkpointName}
+                  onChangeText={setCheckpointName}
+                  placeholder="e.g. Ruby, Biswa Bangla"
+                  placeholderTextColor="#555570"
+                  className="bg-bg rounded-xl px-4 py-3 text-white text-sm"
+                />
+              </View>
+
+              <View className="gap-2 mt-4">
+                <Text className="text-white text-sm font-medium">Location</Text>
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={useCurrentLocationCheckpoint}
+                    className="flex-row items-center gap-2 bg-bg-elevated px-4 py-3 rounded-xl flex-1 justify-center"
+                  >
+                    <Crosshair size={14} color="#FFFFFF" />
+                    <Text className="text-white text-sm font-medium">Current Location</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setUseMapPick(!useMapPick)}
+                    className={`flex-row items-center gap-2 px-4 py-3 rounded-xl flex-1 justify-center ${
+                      useMapPick ? "bg-accent" : "bg-bg-elevated"
+                    }`}
+                  >
+                    <Map size={14} color="#FFFFFF" />
+                    <Text className="text-white text-sm font-medium">Custom Coords</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {useMapPick && (
+                  <View className="bg-bg rounded-xl p-4 gap-3 mt-2 border border-bg-elevated">
+                    <View className="flex-row gap-2">
+                      <View className="flex-1 gap-1">
+                        <Text className="text-muted text-xs">Latitude</Text>
+                        <TextInput
+                          value={manualLat}
+                          onChangeText={setManualLat}
+                          placeholder="e.g. 22.5735"
+                          placeholderTextColor="#555570"
+                          keyboardType="numeric"
+                          className="bg-bg-elevated rounded-lg px-3 py-2 text-white text-sm"
+                        />
+                      </View>
+                      <View className="flex-1 gap-1">
+                        <Text className="text-muted text-xs">Longitude</Text>
+                        <TextInput
+                          value={manualLng}
+                          onChangeText={setManualLng}
+                          placeholder="e.g. 88.4331"
+                          placeholderTextColor="#555570"
+                          keyboardType="numeric"
+                          className="bg-bg-elevated rounded-lg px-3 py-2 text-white text-sm"
+                        />
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={applyManualCheckpointCoords}
+                      className="bg-accent/15 py-2.5 rounded-lg items-center"
+                    >
+                      <Text className="text-accent text-xs font-semibold">Apply Coordinates</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {selectedCheckpointCoords && (
+                  <Text className="text-success text-xs mt-1">
+                    ✓ Coordinates set: {selectedCheckpointCoords.lat.toFixed(6)}, {selectedCheckpointCoords.lng.toFixed(6)}
+                  </Text>
+                )}
+              </View>
+
+              <View className="gap-2 mt-4">
+                <Text className="text-white text-sm font-medium">Detection Radius</Text>
+                <View className="flex-row gap-2">
+                  {MARKER_RADII.map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setCheckpointRadius(r)}
+                      className={`flex-1 py-3 rounded-xl items-center ${
+                        checkpointRadius === r ? "bg-accent" : "bg-bg"
+                      }`}
+                    >
+                      <Text className={`text-sm font-medium ${checkpointRadius === r ? "text-white" : "text-muted"}`}>
+                        {r}m
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleAddCheckpoint}
+                className="bg-accent py-3.5 rounded-xl items-center mt-6"
+                activeOpacity={0.8}
+              >
+                <Text className="text-white text-sm font-semibold">Save Checkpoint</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

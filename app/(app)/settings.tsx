@@ -451,7 +451,7 @@ export default function SettingsScreen() {
           <View className="gap-2">
             <View className="flex-row justify-between">
               <Text className="text-muted text-sm">Version</Text>
-              <Text className="text-white text-sm">1.4.4</Text>
+              <Text className="text-white text-sm">1.5.0</Text>
             </View>
             <View className="flex-row justify-between">
               <Text className="text-muted text-sm">App Name</Text>

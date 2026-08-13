@@ -25,10 +25,8 @@ import {
 
 const TABS = [
   { name: "dashboard", label: "Home", icon: Home },
-  { name: "feed", label: "Feed", icon: Navigation },
   { name: "sos", label: "SOS", icon: AlertTriangle },
   { name: "trip", label: "Trip", icon: Flag },
-  { name: "markers", label: "Markers", icon: MapPin },
   { name: "call-logs", label: "Calls", icon: Phone },
   { name: "settings", label: "Settings", icon: Settings },
 ] as const;
@@ -279,10 +277,10 @@ export default function AppLayout() {
         }}
       >
         <Tabs.Screen name="dashboard" />
-        <Tabs.Screen name="feed" />
+        <Tabs.Screen name="feed" options={{ href: null }} />
         <Tabs.Screen name="sos" />
         <Tabs.Screen name="trip" />
-        <Tabs.Screen name="markers" />
+        <Tabs.Screen name="markers" options={{ href: null }} />
         <Tabs.Screen name="call-logs" />
         <Tabs.Screen name="settings" />
         <Tabs.Screen name="emergency-contacts" options={{ href: null }} />

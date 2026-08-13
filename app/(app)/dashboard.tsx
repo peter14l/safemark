@@ -8,6 +8,7 @@ import { useLocation } from "../../hooks/useLocation";
 import { isTracking, startLocationTracking, stopLocationTracking } from "../../services/location";
 import { supabase, isConfigured } from "../../services/supabase";
 import { getPartner } from "../../services/pairing";
+import { FeedCard, FeedItem } from "../../components/FeedCard";
 import {
   Shield,
   Crosshair,
@@ -43,6 +44,7 @@ export default function DashboardScreen() {
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [myAddress, setMyAddress] = useState<string | null>(null);
   const [partnerAddress, setPartnerAddress] = useState<string | null>(null);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
 
   useEffect(() => {
     isTracking().then(setTracking);
@@ -82,9 +84,50 @@ export default function DashboardScreen() {
                 setBreadcrumbs(data.reverse());
               }
             });
+
+          // Get partner feed
+          supabase
+            .from("location_feed")
+            .select("*")
+            .eq("user_id", p.id)
+            .order("created_at", { ascending: false })
+            .limit(10)
+            .then(({ data }) => {
+              if (data) setFeedItems(data);
+            });
         }
       });
     }
+  }, [user]);
+
+  // Real-time subscription to partner feed changes
+  useEffect(() => {
+    if (!user || !isConfigured || !supabase) return;
+
+    let channel: any;
+    getPartner(user.id).then((p) => {
+      if (p) {
+        channel = supabase
+          .channel(`dashboard-feed-channel-${user.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "location_feed",
+              filter: `user_id=eq.${p.id}`,
+            },
+            (payload) => {
+              setFeedItems((prev) => [payload.new as FeedItem, ...prev.slice(0, 9)]);
+            }
+          )
+          .subscribe();
+      }
+    });
+
+    return () => {
+      if (channel && supabase) supabase.removeChannel(channel);
+    };
   }, [user]);
 
   // Reverse geocode my location when it changes
@@ -124,6 +167,14 @@ export default function DashboardScreen() {
           .order("created_at", { ascending: false })
           .limit(30);
         if (bc) setBreadcrumbs(bc.reverse());
+
+        const { data: feed } = await supabase
+          .from("location_feed")
+          .select("*")
+          .eq("user_id", p.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        if (feed) setFeedItems(feed);
       }
     }
     setRefreshing(false);
@@ -430,7 +481,7 @@ export default function DashboardScreen() {
         )}
 
         {/* Markers Summary */}
-        <View className="mb-4">
+        <View className="mb-6">
           <View className="flex-row items-center justify-between mb-3">
             <Text className="text-white text-base font-semibold">
               Active Markers
@@ -477,6 +528,34 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
+
+        {/* Partner Activity Feed */}
+        {partner && (
+          <View className="mb-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-white text-base font-semibold">
+                Partner Activity Feed
+              </Text>
+            </View>
+
+            {feedItems.length === 0 ? (
+              <View className="bg-bg-card rounded-2xl p-8 items-center">
+                <View className="w-12 h-12 rounded-2xl bg-bg-elevated items-center justify-center mb-3">
+                  <Navigation size={24} color="#555570" strokeWidth={1.5} />
+                </View>
+                <Text className="text-muted text-center text-sm leading-5">
+                  No activity updates from {partner.name} yet.
+                </Text>
+              </View>
+            ) : (
+              <View className="gap-1">
+                {feedItems.map((item) => (
+                  <FeedCard key={item.id} item={item} />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
