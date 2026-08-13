@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1087580965834",
+    "project_id": "safemark-be32b",
+    "storage_bucket": "safemark-be32b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1087580965834:android:9d28b997fc947c0f9add33",
+        "android_client_info": {
+          "package_name": "com.safemark.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrFLERez75xasux_8TcAtRMUV77D_Q5Og"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
