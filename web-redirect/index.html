@@ -74,7 +74,16 @@
         // Extract parameters from the hash or query string
         const hash = window.location.hash;
         const search = window.location.search;
-        const targetUrl = 'safemark://reset-password' + hash + (hash ? '' : search);
+        
+        // Convert hash fragment (#) to query parameters (?) to help Expo Router parse them automatically
+        let queryParams = '';
+        if (hash) {
+            queryParams = '?' + hash.substring(1);
+        } else {
+            queryParams = search;
+        }
+        
+        const targetUrl = 'safemark://reset-password' + queryParams;
         
         document.getElementById('fallback-button').href = targetUrl;
         

@@ -9,7 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import { supabase, isConfigured } from "../services/supabase";
@@ -23,43 +23,40 @@ export default function ResetPasswordScreen() {
   const [errorMessage, setErrorMessage] = useState("");
   const router = useRouter();
   const url = Linking.useURL();
+  const searchParams = useLocalSearchParams<{ access_token?: string; refresh_token?: string; error_description?: string }>();
 
   useEffect(() => {
-    if (!url) return;
-
     const handleRedirect = async () => {
       try {
-        // Parse Hash parameters from URL (e.g. safemark://reset-password#access_token=xxx&...)
-        const hashIndex = url.indexOf("#");
-        if (hashIndex === -1) {
-          const parsed = Linking.parse(url);
-          // Fallback to queryParams if not in hash
-          const accessToken = parsed.queryParams?.access_token as string;
-          const refreshToken = parsed.queryParams?.refresh_token as string;
-          
-          if (accessToken && refreshToken) {
-            const { error } = await supabase!.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-            if (error) throw error;
-            setSessionValid(true);
-            return;
+        // 1. Try to read from Expo Router's parsed search params
+        let accessToken = searchParams.access_token;
+        let refreshToken = searchParams.refresh_token;
+
+        // 2. Fallback: Parse URL manually
+        if ((!accessToken || !refreshToken) && url) {
+          const hashIndex = url.indexOf("#");
+          const queryIndex = url.indexOf("?");
+          const separatorIndex = hashIndex !== -1 ? hashIndex : queryIndex;
+
+          if (separatorIndex !== -1) {
+            const searchPart = url.substring(separatorIndex + 1);
+            const params = new URLSearchParams(searchPart);
+            accessToken = accessToken || params.get("access_token") || undefined;
+            refreshToken = refreshToken || params.get("refresh_token") || undefined;
           }
-          
-          setSessionValid(false);
-          setErrorMessage("Invalid reset link layout.");
-          return;
         }
 
-        const hash = url.substring(hashIndex + 1);
-        const params = new URLSearchParams(hash);
-        const accessToken = params.get("access_token");
-        const refreshToken = params.get("refresh_token");
+        if (searchParams.error_description) {
+          throw new Error(searchParams.error_description);
+        }
 
         if (!accessToken || !refreshToken) {
-          setSessionValid(false);
-          setErrorMessage("Reset tokens are missing from the link.");
+          // If we have parsed url or local search params but no token, show error.
+          // Otherwise keep waiting.
+          if (url || Object.keys(searchParams).length > 0) {
+            setSessionValid(false);
+            setErrorMessage("Reset tokens are missing from the link.");
+          }
           return;
         }
 
@@ -77,7 +74,7 @@ export default function ResetPasswordScreen() {
     };
 
     handleRedirect();
-  }, [url]);
+  }, [url, searchParams.access_token, searchParams.refresh_token, searchParams.error_description]);
 
   const handleUpdatePassword = async () => {
     if (password.length < 6) {
