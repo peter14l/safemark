@@ -78,8 +78,7 @@ export default function LoginScreen() {
           className="flex-1 text-white py-4 ml-3 text-base"
         />
       </View>
-
-      <View className="flex-row items-center bg-bg-card rounded-xl px-4 mb-6">
+      <View className="flex-row items-center bg-bg-card rounded-xl px-4 mb-4">
         <Key size={18} color="#555570" strokeWidth={1.8} />
         <TextInput
           value={password}
@@ -90,6 +89,18 @@ export default function LoginScreen() {
           className="flex-1 text-white py-4 ml-3 text-base"
         />
       </View>
+
+      {!isSignUp && (
+        <TouchableOpacity
+          onPress={() => router.push("/(auth)/forgot-password")}
+          activeOpacity={0.7}
+          className="self-end mb-6"
+        >
+          <Text className="text-accent text-sm font-semibold">
+            Forgot Password?
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <TouchableOpacity
         onPress={handleSubmit}

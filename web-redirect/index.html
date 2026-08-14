@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Redirecting to SafeMark...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            background-color: #0A0A0F;
+            color: #FFFFFF;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 400px;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #6C63FF;
+            animation: spin 1s linear infinite;
+            margin-bottom: 24px;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        h1 {
+            font-size: 20px;
+            margin: 0 0 10px 0;
+            font-weight: 600;
+        }
+        p {
+            color: #8888AA;
+            font-size: 14px;
+            margin: 0 0 24px 0;
+            line-height: 1.5;
+        }
+        .button {
+            display: inline-block;
+            background-color: #6C63FF;
+            color: white;
+            text-decoration: none;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .button:hover {
+            background-color: #5B52E5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h1>Opening SafeMark App</h1>
+        <p>You are being redirected to reset your password. If the app does not open automatically, please tap the button below.</p>
+        <a id="fallback-button" class="button" href="#">Open App</a>
+    </div>
+
+    <script>
+        // Extract parameters from the hash or query string
+        const hash = window.location.hash;
+        const search = window.location.search;
+        const targetUrl = 'safemark://reset-password' + hash + (hash ? '' : search);
+        
+        document.getElementById('fallback-button').href = targetUrl;
+        
+        // Attempt to redirect immediately
+        window.location.href = targetUrl;
+        
+        // Fallback attempts
+        setTimeout(() => {
+            window.location.href = targetUrl;
+        }, 1000);
+    </script>
+</body>
+</html>
