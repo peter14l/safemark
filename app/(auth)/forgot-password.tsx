@@ -31,7 +31,7 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: "safemark://reset-password",
+        redirectTo: "https://stalwart-bonbon-f02fa2.netlify.app/",
       });
 
       if (error) throw error;

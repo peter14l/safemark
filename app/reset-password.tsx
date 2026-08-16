@@ -21,9 +21,21 @@ export default function ResetPasswordScreen() {
   const [loading, setLoading] = useState(false);
   const [sessionValid, setSessionValid] = useState<boolean | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [url, setUrl] = useState<string | null>(null);
   const router = useRouter();
-  const url = Linking.useURL();
   const searchParams = useLocalSearchParams<{ access_token?: string; refresh_token?: string; error_description?: string }>();
+
+  // Capture the deep link on cold start (expo-router consumes the initial URL,
+  // so Linking.useURL() can return null there) and on subsequent launches.
+  useEffect(() => {
+    Linking.getInitialURL().then((initialUrl) => {
+      if (initialUrl) setUrl(initialUrl);
+    });
+    const subscription = Linking.addEventListener("url", ({ url: incomingUrl }) => {
+      setUrl(incomingUrl);
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const handleRedirect = async () => {
